@@ -50,6 +50,10 @@
                 <p>{{ total_reports }}</p>
             </div>
             <div class="stat-section">
+                <h3>Status</h3>
+                <p>{{ statuses.get('open', 0) }} open, {{ statuses.get('in_progress', 0) }} in progress, {{ statuses.get('resolved', 0) }} resolved</p>
+            </div>
+            <div class="stat-section">
                 <h3>Reports by Category</h3>
                 {% for cat, count in categories.items() %}
                 <div class="cat-bar-row">
@@ -102,6 +106,12 @@
         </form>
     </div>
     <footer class="site-footer">CityPulse — AI-powered urban issue triage <span class="badge">AlgoFest 2026</span></footer>
+    <div id="toast-container" aria-live="polite" aria-atomic="false" style="position:fixed;bottom:90px;right:24px;z-index:9999;display:flex;flex-direction:column-reverse;gap:10px;pointer-events:none"></div>
+    <style>
+    .toast{pointer-events:auto;background:var(--card);color:var(--text);border:1px solid var(--border);border-left:4px solid var(--blue);border-radius:var(--radius-sm);padding:12px 16px;box-shadow:var(--shadow-lg);max-width:340px;font-size:0.9rem;opacity:1;transition:opacity .4s ease}
+    .toast.fade-out{opacity:0}
+    .toast a{color:var(--blue);text-decoration:underline;margin-left:6px}
+    </style>
     <script>
     (function(){
         // Register service worker for PWA
@@ -154,6 +164,25 @@
             input.disabled=false;document.getElementById('chatSend').disabled=false;
             input.focus();msgs.scrollTop=msgs.scrollHeight;
         });
+    }
+    // SSE live updates
+    if(typeof EventSource!=='undefined'){
+        var es=new EventSource('/api/stream');
+        es.onmessage=function(e){
+            try{var d=JSON.parse(e.data)}catch(_){return}
+            // Update total reports count
+            var sp=document.querySelector('#stats-panel .stat-section p');
+            if(sp)sp.textContent=parseInt(sp.textContent||'0',10)+1;
+            // Show toast
+            var tc=document.getElementById('toast-container');
+            var t=document.createElement('div');t.className='toast';t.setAttribute('role','status');
+            t.appendChild(document.createTextNode('\ud83d\udccd New report: '));
+            var b=document.createElement('strong');b.textContent=d.category;t.appendChild(b);
+            t.appendChild(document.createTextNode(' near '+d.neighborhood));
+            var a=document.createElement('a');a.href='/dashboard';a.textContent='Refresh map';t.appendChild(a);
+            tc.appendChild(t);
+            setTimeout(function(){t.classList.add('fade-out');setTimeout(function(){t.remove()},400)},5000);
+        };
     }
     </script>
 </body>

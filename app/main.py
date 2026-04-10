@@ -1,5 +1,7 @@
 """CityPulse FastAPI application — routes, templates, static files."""
 
+import asyncio
+import json as _json
 from collections import Counter
 from contextlib import asynccontextmanager
 from datetime import datetime, timedelta
@@ -10,9 +12,10 @@ from uuid import uuid4
 import folium
 import numpy as np
 from fastapi import Depends, FastAPI, File, Form, Request, UploadFile
-from fastapi.responses import HTMLResponse, JSONResponse
+from fastapi.responses import HTMLResponse, JSONResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
+from sqlalchemy import inspect as sa_inspect, text
 from sqlalchemy.orm import Session
 
 import httpx
@@ -116,6 +119,22 @@ UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
 
 MAX_FILE_SIZE = 10_485_760
 
+# --- SSE live updates ---
+sse_clients: set[asyncio.Queue] = set()
+
+
+def notify_sse_clients(event_data: dict) -> None:
+    """Push event to all connected SSE clients. Drop slow/dead clients."""
+    payload = _json.dumps(event_data)
+    dead: list[asyncio.Queue] = []
+    for q in sse_clients:
+        try:
+            q.put_nowait(payload)
+        except asyncio.QueueFull:
+            dead.append(q)
+    for q in dead:
+        sse_clients.discard(q)
+
 # Magic bytes → file extension
 MAGIC_JPEG = b"\xff\xd8\xff"
 MAGIC_PNG = b"\x89PNG"
@@ -141,12 +160,44 @@ def _error(code: str, message: str) -> JSONResponse:
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     create_tables()
+    # Migrate: add confirmations column if missing (existing DBs)
+    from app.database import engine
+    with engine.connect() as conn:
+        cols = [c["name"] for c in sa_inspect(engine).get_columns("reports")]
+        if "confirmations" not in cols:
+            conn.execute(text("ALTER TABLE reports ADD COLUMN confirmations INTEGER NOT NULL DEFAULT 0"))
+            conn.commit()
+        if "status" not in cols:
+            conn.execute(text("ALTER TABLE reports ADD COLUMN status TEXT NOT NULL DEFAULT 'open'"))
+            conn.commit()
     yield
 
 
 app = FastAPI(lifespan=lifespan)
 app.mount("/static", StaticFiles(directory=BASE_DIR / "static"), name="static")
 templates = Jinja2Templates(directory=BASE_DIR / "templates")
+
+
+@app.get("/api/stream")
+async def sse_stream():
+    q: asyncio.Queue = asyncio.Queue(maxsize=64)
+    sse_clients.add(q)
+
+    async def event_generator():
+        try:
+            while True:
+                data = await q.get()
+                yield f"data: {data}\n\n"
+        except asyncio.CancelledError:
+            pass
+        finally:
+            sse_clients.discard(q)
+
+    return StreamingResponse(
+        event_generator(),
+        media_type="text/event-stream",
+        headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
+    )
 
 
 @app.get("/submit")
@@ -176,6 +227,7 @@ def _build_dashboard_data(db: Session, category: Optional[str] = None, severity:
     severities = compute_severity_breakdown(reports)
     hotspots = compute_hotspots(reports)
     total = len(reports)
+    statuses = dict(Counter(r.status for r in reports))
 
     if trend > 0:
         trend_text = f"↑ {trend} more reports this week"
@@ -188,6 +240,7 @@ def _build_dashboard_data(db: Session, category: Optional[str] = None, severity:
         "health_score": health_score, "total_reports": total,
         "categories": categories, "severities": severities,
         "hotspots": hotspots, "trend_text": trend_text, "trend": trend,
+        "statuses": statuses,
     }
 
 
@@ -200,21 +253,52 @@ async def dashboard(
     reports, stats = _build_dashboard_data(db, category, severity)
     m = folium.Map(location=[48.7758, 9.1829], zoom_start=13)
     SEV_BADGE = {"low": "#43a047", "medium": "#fb8c00", "high": "#f4511e", "critical": "#c62828"}
+    STATUS_LABEL = {"open": "Open", "in_progress": "In Progress", "resolved": "Resolved"}
     bounds = []
     for r in reports:
         sev_color = SEV_BADGE.get(r.severity, "#1a73e8")
+        status_label = STATUS_LABEL.get(r.status, "Open")
+        status_btns = ''.join(
+            f'<button onclick="(function(btn){{'
+            f'fetch((parent.location.origin||location.origin)+&quot;/api/reports/{r.id}/status&quot;,'
+            f'{{method:&quot;PATCH&quot;,headers:{{&quot;Content-Type&quot;:&quot;application/json&quot;}},'
+            f'body:JSON.stringify({{status:&quot;{s}&quot;}})}})'
+            f'.then(function(r){{return r.json()}})'
+            f'.then(function(d){{btn.parentElement.previousElementSibling.textContent=&quot;Status: {STATUS_LABEL[s]}&quot;}})'
+            f'}})(this)" '
+            f'style="margin:2px;padding:2px 8px;border:1px solid #ccc;border-radius:4px;background:#f5f5f5;cursor:pointer;font-size:11px">'
+            f'{STATUS_LABEL[s]}</button>'
+            for s in ("open", "in_progress", "resolved")
+        )
         popup_html = (
             f'<div style="font-family:-apple-system,BlinkMacSystemFont,sans-serif;min-width:160px">'
             f'<img src="{r.photo_path}" width="160" style="border-radius:6px;display:block;margin-bottom:6px">'
             f'<div style="font-weight:700;font-size:13px;margin-bottom:4px;text-transform:capitalize">{r.category}</div>'
             f'<span style="display:inline-block;background:{sev_color};color:#fff;padding:1px 8px;border-radius:10px;font-size:11px;font-weight:600;text-transform:uppercase">{r.severity}</span>'
             f'<div style="color:#5f6b7a;font-size:11px;margin-top:6px">{r.department}<br>{r.created_at}</div>'
+            f'<div style="font-size:11px;margin-top:4px;font-weight:600">Status: {status_label}</div>'
+            f'<div style="margin-top:4px">{status_btns}</div>'
+            f'<button id="confirm-btn-{r.id}" onclick="(function(btn){{'
+            f'btn.disabled=true;'
+            f'fetch((parent.location.origin||location.origin)+&quot;/api/reports/{r.id}/confirm&quot;,{{method:&quot;POST&quot;}})'
+            f'.then(function(r){{return r.json()}})'
+            f'.then(function(d){{'
+            f'btn.textContent=&quot;\\U0001f44d Confirm (&quot;+d.confirmations+&quot;)&quot;;'
+            f'btn.disabled=false;'
+            f'var sev=btn.previousElementSibling.previousElementSibling.previousElementSibling.previousElementSibling;'
+            f'if(sev)sev.textContent=d.severity;'
+            f'}})'
+            f'.catch(function(){{btn.disabled=false}})'
+            f'}})(this)" '
+            f'style="margin-top:6px;width:100%;padding:4px 0;border:1px solid #ccc;border-radius:6px;background:#f5f5f5;cursor:pointer;font-size:12px">'
+            f'\U0001f44d Confirm ({r.confirmations})</button>'
             f'</div>'
         )
+        icon_color = "gray" if r.status == "resolved" else SEVERITY_COLORS.get(r.severity, "blue")
         folium.Marker(
             location=[r.latitude, r.longitude],
             popup=folium.Popup(popup_html, max_width=220),
-            icon=folium.Icon(color=SEVERITY_COLORS.get(r.severity, "blue")),
+            icon=folium.Icon(color=icon_color),
         ).add_to(m)
         bounds.append([r.latitude, r.longitude])
     if bounds:
@@ -246,6 +330,7 @@ async def api_dashboard(
                 "category": r.category, "severity": r.severity,
                 "department": r.department, "description": r.description,
                 "cluster_id": r.cluster_id, "created_at": str(r.created_at),
+                "confirmations": r.confirmations, "status": r.status,
             }
             for r in reports
         ],
@@ -262,6 +347,7 @@ async def get_reports(db: Session = Depends(get_db)):
             "category": r.category, "severity": r.severity,
             "department": r.department, "description": r.description,
             "cluster_id": r.cluster_id, "created_at": str(r.created_at),
+            "confirmations": r.confirmations, "status": r.status,
         }
         for r in reports
     ]
@@ -333,6 +419,14 @@ async def create_report(
     db.commit()
     db.refresh(report)
 
+    # Notify SSE clients
+    notify_sse_clients({
+        "id": report.id,
+        "category": report.category,
+        "severity": report.severity,
+        "neighborhood": neighborhood_for_coords(report.latitude, report.longitude),
+    })
+
     # 11. Return 201
     return JSONResponse(
         status_code=201,
@@ -345,9 +439,51 @@ async def create_report(
             "severity": report.severity,
             "department": report.department,
             "description": report.description,
+            "status": report.status,
             "created_at": str(report.created_at),
         },
     )
+
+
+SEVERITY_ESCALATION = {"low": "medium", "medium": "high", "high": "critical", "critical": "critical"}
+
+
+@app.post("/api/reports/{report_id}/confirm")
+async def confirm_report(report_id: int, db: Session = Depends(get_db)):
+    report = db.query(Report).filter(Report.id == report_id).first()
+    if not report:
+        return JSONResponse(status_code=404, content={"error": "Report not found"})
+    report.confirmations = Report.confirmations + 1
+    db.flush()
+    db.refresh(report)
+    if report.confirmations == 3:
+        report.severity = SEVERITY_ESCALATION[report.severity]
+    db.commit()
+    return {"confirmations": report.confirmations, "severity": report.severity}
+
+
+VALID_STATUSES = {"open", "in_progress", "resolved"}
+
+
+@app.patch("/api/reports/{report_id}/status")
+async def update_report_status(report_id: int, request: Request, db: Session = Depends(get_db)):
+    report = db.query(Report).filter(Report.id == report_id).first()
+    if not report:
+        return JSONResponse(status_code=404, content={"error": "Report not found"})
+    try:
+        body = await request.json()
+    except Exception:
+        return JSONResponse(status_code=422, content={"error": {"code": "INVALID_JSON", "message": "Invalid JSON body"}})
+    status = body.get("status") if isinstance(body, dict) else None
+    if status not in VALID_STATUSES:
+        return JSONResponse(status_code=422, content={"error": {"code": "INVALID_STATUS", "message": "Status must be one of: open, in_progress, resolved"}})
+    report.status = status
+    db.commit()
+    db.refresh(report)
+    return {
+        "id": report.id, "status": report.status,
+        "category": report.category, "severity": report.severity,
+    }
 
 
 CHAT_SYSTEM_PROMPT = """You are CityPulse AI, a smart assistant for {city}. You know about urban issues, infrastructure, and local news.

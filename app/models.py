@@ -1,4 +1,4 @@
-from sqlalchemy import Column, Integer, Text, Float, DateTime, Index, CheckConstraint, text
+from sqlalchemy import Column, Integer, Text, Float, DateTime, Index, CheckConstraint, text, inspect as sa_inspect
 from app.database import Base
 
 
@@ -16,6 +16,10 @@ class Report(Base):
             "department IN ('roads','electrical','sanitation','water','parks','general')",
             name="ck_department",
         ),
+        CheckConstraint(
+            "status IN ('open','in_progress','resolved')",
+            name="ck_status",
+        ),
         Index("idx_reports_created_at", "created_at"),
     )
 
@@ -28,4 +32,6 @@ class Report(Base):
     department = Column(Text, nullable=False)
     description = Column(Text, nullable=False)
     cluster_id = Column(Integer, nullable=True)
+    confirmations = Column(Integer, nullable=False, server_default=text("0"))
+    status = Column(Text, nullable=False, server_default=text("'open'"))
     created_at = Column(DateTime, nullable=False, server_default=text("CURRENT_TIMESTAMP"))
