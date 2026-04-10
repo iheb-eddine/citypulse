@@ -1,0 +1,160 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>CityPulse - Dashboard</title>
+    <link rel="stylesheet" href="/static/css/style.css">
+    <script>document.documentElement.dataset.theme=localStorage.getItem('theme')||''</script>
+    <link rel="manifest" href="/static/manifest.json">
+    <meta name="theme-color" content="#1a73e8">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+</head>
+<body>
+    <div class="nav-bar">
+        <a href="/" class="brand">🏙️ CityPulse</a>
+        <nav><a href="/submit">Submit</a><a href="/" class="active">Dashboard</a><button class="theme-toggle" onclick="document.documentElement.dataset.theme=document.documentElement.dataset.theme==='dark'?'light':'dark';localStorage.setItem('theme',document.documentElement.dataset.theme)" title="Toggle dark mode">🌓</button></nav>
+    </div>
+    <div class="filter-bar">
+        <form method="get" action="/dashboard" class="filter-form">
+            <label for="category">Category:</label>
+            <select name="category" id="category" onchange="this.form.submit()">
+                <option value="">All</option>
+                {% for cat in ["pothole","streetlight","graffiti","flooding","dumping","sign","other","unclassified"] %}
+                <option value="{{ cat }}" {{ "selected" if filter_category == cat else "" }}>{{ cat | capitalize }}</option>
+                {% endfor %}
+            </select>
+            <label for="severity">Severity:</label>
+            <select name="severity" id="severity" onchange="this.form.submit()">
+                <option value="">All</option>
+                {% for sev in ["low","medium","high","critical"] %}
+                <option value="{{ sev }}" {{ "selected" if filter_severity == sev else "" }}>{{ sev | capitalize }}</option>
+                {% endfor %}
+            </select>
+            <noscript><button type="submit">Filter</button></noscript>
+        </form>
+    </div>
+    <div class="dashboard-layout">
+        <div class="map-wrap">
+            {% if empty %}<div class="no-reports">{% if filter_category or filter_severity %}🔍 No reports match current filters{% else %}📍 No reports yet — <a href="/submit" style="color:#1a73e8;text-decoration:underline">submit the first one</a>{% endif %}</div>{% endif %}
+            {{ map_html | safe }}
+        </div>
+        <div id="stats-panel">
+            <div class="health-score {% if health_score >= 70 %}health-green{% elif health_score >= 40 %}health-amber{% else %}health-red{% endif %}">
+                <div class="label">City Health Score</div>
+                <div class="score">{{ health_score | round(1) }}</div>
+                <div class="max">/ 100</div>
+            </div>
+            <div class="stat-section">
+                <h3>Total Reports</h3>
+                <p>{{ total_reports }}</p>
+            </div>
+            <div class="stat-section">
+                <h3>Reports by Category</h3>
+                {% for cat, count in categories.items() %}
+                <div class="cat-bar-row">
+                    <span class="cat-bar-label">{{ cat }}</span>
+                    <div class="cat-bar" style="width: {{ (count / total_reports * 200) if total_reports else 0 }}px;"></div>
+                    <span class="cat-bar-count">{{ count }}</span>
+                </div>
+                {% endfor %}
+            </div>
+            <div class="stat-section">
+                <h3>Reports by Severity</h3>
+                {% for sev, count in severities.items() %}
+                <div class="cat-bar-row">
+                    <span class="cat-bar-label">{{ sev }}</span>
+                    <div class="sev-bar sev-{{ sev }}" style="width: {{ (count / total_reports * 200) if total_reports else 0 }}px;"></div>
+                    <span class="cat-bar-count">{{ count }}</span>
+                </div>
+                {% endfor %}
+            </div>
+            <div class="stat-section">
+                <h3>Top Hotspots</h3>
+                {% if hotspots %}
+                <ol class="hotspot-list">
+                    {% for h in hotspots %}
+                    <li>{{ h.name }} — {{ h.count }} reports</li>
+                    {% endfor %}
+                </ol>
+                {% else %}
+                <p>No clusters detected</p>
+                {% endif %}
+            </div>
+            <div class="stat-section">
+                <h3>Trend</h3>
+                <div class="trend">{{ trend_text }}</div>
+            </div>
+        </div>
+    </div>
+    <button class="chat-fab" id="chatFab" aria-label="Open AI chat assistant" onclick="toggleChat()">💬</button>
+    <div class="chat-panel" id="chatPanel" role="dialog" aria-label="CityPulse AI Chat" hidden>
+        <div class="chat-header">
+            <span>🤖 CityPulse AI</span>
+            <button class="chat-close" aria-label="Close chat" onclick="toggleChat()">✕</button>
+        </div>
+        <div class="chat-messages" id="chatMessages">
+            <div class="chat-msg ai">Hi! I'm CityPulse AI. Ask me about city reports, trends, or local news.</div>
+        </div>
+        <form class="chat-input" id="chatForm" onsubmit="sendChat(event)">
+            <input type="text" id="chatInput" placeholder="Ask about city issues..." autocomplete="off" aria-label="Chat message">
+            <button type="submit" id="chatSend" aria-label="Send message">➤</button>
+        </form>
+    </div>
+    <footer class="site-footer">CityPulse — AI-powered urban issue triage <span class="badge">AlgoFest 2026</span></footer>
+    <script>
+    (function(){
+        // Register service worker for PWA
+        if ('serviceWorker' in navigator) navigator.serviceWorker.register('/static/sw.js');
+        // Remove empty filter params from URL for cleanliness
+        var form = document.querySelector('.filter-form');
+        form.addEventListener('submit', function(e) {
+            var selects = form.querySelectorAll('select');
+            selects.forEach(function(s) { if (!s.value) s.removeAttribute('name'); });
+        });
+        // Manual refresh only — auto-refresh removed to preserve map state
+    })();
+    function toggleChat(){
+        var p=document.getElementById('chatPanel'),f=document.getElementById('chatFab');
+        if(p.hidden){
+            p.hidden=false;p.style.display='flex';f.style.display='none';
+            document.getElementById('chatInput').focus();
+        }else{
+            p.hidden=true;p.style.display='none';f.style.display='';
+        }
+    }
+    function sendChat(e){
+        e.preventDefault();
+        var input=document.getElementById('chatInput'),msg=input.value.trim();
+        if(!msg)return;
+        var msgs=document.getElementById('chatMessages');
+        msgs.insertAdjacentHTML('beforeend','<div class="chat-msg user">'+msg.replace(/</g,'&lt;')+'</div>');
+        input.value='';input.disabled=true;document.getElementById('chatSend').disabled=true;
+        msgs.insertAdjacentHTML('beforeend','<div class="chat-msg ai chat-loading" id="chatLoading">Thinking<span class="dots"></span></div>');
+        msgs.scrollTop=msgs.scrollHeight;
+        fetch('/api/chat',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({message:msg})})
+        .then(function(r){return r.json()})
+        .then(function(d){
+            var el=document.getElementById('chatLoading');
+            if(el)el.remove();
+            var text=(d.response||d.error&&d.error.message||'Something went wrong.').replace(/</g,'&lt;');
+            var msgEl=document.createElement('div');msgEl.className='chat-msg ai';msgs.appendChild(msgEl);
+            // Type out word by word
+            var words=text.split(' '),i=0;
+            function typeNext(){
+                if(i<words.length){msgEl.textContent+=(i?' ':'')+words[i];i++;msgs.scrollTop=msgs.scrollHeight;setTimeout(typeNext,30);}
+            }
+            typeNext();
+        })
+        .catch(function(){
+            var el=document.getElementById('chatLoading');if(el)el.remove();
+            msgs.insertAdjacentHTML('beforeend','<div class="chat-msg ai">Something went wrong. Please try again.</div>');
+        })
+        .finally(function(){
+            input.disabled=false;document.getElementById('chatSend').disabled=false;
+            input.focus();msgs.scrollTop=msgs.scrollHeight;
+        });
+    }
+    </script>
+</body>
+</html>

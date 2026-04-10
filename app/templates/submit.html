@@ -1,0 +1,187 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>CityPulse — Report an Issue</title>
+    <link rel="stylesheet" href="/static/css/style.css">
+    <script>document.documentElement.dataset.theme=localStorage.getItem('theme')||''</script>
+    <link rel="manifest" href="/static/manifest.json">
+    <meta name="theme-color" content="#1a73e8">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+    <style>
+        *{box-sizing:border-box;margin:0;padding:0}
+        body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;background:var(--bg);color:var(--text);line-height:1.6}
+        .container{max-width:480px;margin:0 auto;padding:16px}
+        header{text-align:center;padding:24px 0 16px}
+        header h1{font-size:1.8rem;color:#1a73e8}
+        header p{color:var(--text-muted);font-size:0.95rem}
+        .card{background:var(--card);border-radius:12px;padding:20px;margin-bottom:16px;box-shadow:0 2px 8px rgba(0,0,0,0.08)}
+        label{display:block;font-weight:600;margin-bottom:6px;font-size:0.9rem;color:var(--text)}
+        .upload-area{border:2px dashed var(--border);border-radius:10px;padding:32px 16px;text-align:center;cursor:pointer;transition:border-color .2s}
+        .upload-area:hover,.upload-area.dragover{border-color:#1a73e8}
+        .upload-area svg{width:48px;height:48px;fill:var(--text-light);margin-bottom:8px}
+        .upload-area p{color:var(--text-light);font-size:0.9rem}
+        #photo{display:none}
+        #preview{max-width:100%;max-height:200px;border-radius:8px;margin-top:8px;display:none}
+        .loc-btn{display:inline-flex;align-items:center;gap:6px;background:#00897b;color:#fff;border:none;border-radius:8px;padding:10px 16px;font-size:0.9rem;cursor:pointer;margin-bottom:12px}
+        .loc-btn:hover{background:#00796b}
+        .loc-btn:disabled{opacity:.5;cursor:not-allowed}
+        input[type="text"]{width:100%;padding:10px 12px;border:1px solid var(--border);border-radius:8px;font-size:1rem;margin-bottom:10px}
+        input[type="text"]:focus{outline:none;border-color:#1a73e8;box-shadow:0 0 0 2px rgba(26,115,232,0.2)}
+        .row{display:flex;gap:10px}
+        .row>div{flex:1}
+        .submit-btn{width:100%;padding:14px;background:#1a73e8;color:#fff;border:none;border-radius:10px;font-size:1.05rem;font-weight:600;cursor:pointer;transition:background .2s}
+        .submit-btn:hover{background:#1557b0}
+        .submit-btn:disabled{background:var(--text-light);cursor:not-allowed}
+        .msg{padding:14px;border-radius:10px;margin-top:16px;font-size:0.95rem}
+        .msg.success{background:#e8f5e9;border:1px solid #66bb6a;color:#2e7d32}
+        .msg.error{background:#fbe9e7;border:1px solid #ef5350;color:#c62828}
+        .result-grid{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:10px}
+        .result-grid dt{font-weight:600;color:var(--text-muted);font-size:0.85rem}
+        .result-grid dd{margin:0 0 6px;font-size:0.95rem}
+        .spinner{display:inline-block;width:18px;height:18px;border:2px solid #fff;border-top-color:transparent;border-radius:50%;animation:spin .6s linear infinite;vertical-align:middle;margin-right:6px}
+        @keyframes spin{to{transform:rotate(360deg)}}
+        .loc-status{font-size:0.85rem;color:var(--text-muted);margin-bottom:8px}
+        #locMap{height:200px;border-radius:8px;margin-bottom:12px;display:none;z-index:0}
+        .map-toggle{background:none;border:1px solid var(--border);border-radius:8px;padding:8px 14px;font-size:0.85rem;color:#1a73e8;cursor:pointer;margin-left:8px}
+        .map-toggle:hover{background:#e3f2fd}
+    </style>
+</head>
+<body>
+<div class="nav-bar">
+    <a href="/" class="brand">🏙️ CityPulse</a>
+    <nav><a href="/submit" class="active">Submit</a><a href="/">Dashboard</a><button class="theme-toggle" onclick="document.documentElement.dataset.theme=document.documentElement.dataset.theme==='dark'?'light':'dark';localStorage.setItem('theme',document.documentElement.dataset.theme)" title="Toggle dark mode">🌓</button></nav>
+</div>
+<div class="container">
+    <header>
+        <h1>CityPulse</h1>
+        <p>Report an urban issue in your neighborhood</p>
+    </header>
+
+    <form id="reportForm" enctype="multipart/form-data">
+        <div class="card">
+            <label for="photo">Photo</label>
+            <div class="upload-area" id="uploadArea" role="button" tabindex="0" aria-label="Click or drag to upload a photo">
+                <div id="uploadPrompt">
+                    <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 7a5 5 0 100 10 5 5 0 000-10zm0 8a3 3 0 110-6 3 3 0 010 6zm8-11h-3.17L15.41 2.59A2 2 0 0013.59 2h-3.18a2 2 0 00-1.83 1.18L7.17 4H4a2 2 0 00-2 2v12a2 2 0 002 2h16a2 2 0 002-2V6a2 2 0 00-2-2z"/></svg>
+                    <p>Tap to take or choose a photo</p>
+                </div>
+                <img id="preview" alt="Photo preview">
+            </div>
+            <input type="file" id="photo" name="photo" accept="image/*" capture="environment">
+        </div>
+
+        <div class="card">
+            <label>Location</label>
+            <button type="button" class="loc-btn" id="locBtn" aria-label="Use my current location">📍 Use my location</button>
+            <button type="button" class="map-toggle" id="mapToggle">🗺️ Pick on map</button>
+            <div id="locStatus" class="loc-status" aria-live="polite"></div>
+            <div id="locMap"></div>
+            <div class="row">
+                <div>
+                    <label for="latitude">Latitude</label>
+                    <input type="text" id="latitude" name="latitude" placeholder="-90 to 90" inputmode="decimal">
+                </div>
+                <div>
+                    <label for="longitude">Longitude</label>
+                    <input type="text" id="longitude" name="longitude" placeholder="-180 to 180" inputmode="decimal">
+                </div>
+            </div>
+        </div>
+
+        <button type="submit" class="submit-btn" id="submitBtn">Submit Report</button>
+    </form>
+
+    <div id="result"></div>
+</div>
+<footer class="site-footer">CityPulse — AI-powered urban issue triage <span class="badge">AlgoFest 2026</span></footer>
+
+<script>
+(function(){
+    if ('serviceWorker' in navigator) navigator.serviceWorker.register('/static/sw.js');
+    const form=document.getElementById('reportForm'),
+          photoInput=document.getElementById('photo'),
+          uploadArea=document.getElementById('uploadArea'),
+          uploadPrompt=document.getElementById('uploadPrompt'),
+          preview=document.getElementById('preview'),
+          locBtn=document.getElementById('locBtn'),
+          locStatus=document.getElementById('locStatus'),
+          submitBtn=document.getElementById('submitBtn'),
+          result=document.getElementById('result');
+
+    uploadArea.addEventListener('click',()=>photoInput.click());
+    uploadArea.addEventListener('keydown',e=>{if(e.key==='Enter'||e.key===' ')photoInput.click()});
+    uploadArea.addEventListener('dragover',e=>{e.preventDefault();uploadArea.classList.add('dragover')});
+    uploadArea.addEventListener('dragleave',()=>uploadArea.classList.remove('dragover'));
+    uploadArea.addEventListener('drop',e=>{e.preventDefault();uploadArea.classList.remove('dragover');if(e.dataTransfer.files.length){photoInput.files=e.dataTransfer.files;showPreview()}});
+
+    photoInput.addEventListener('change',showPreview);
+    function showPreview(){
+        const f=photoInput.files[0];
+        if(f){preview.src=URL.createObjectURL(f);preview.style.display='block';uploadPrompt.style.display='none'}
+    }
+
+    locBtn.addEventListener('click',()=>{
+        if(!navigator.geolocation){locStatus.textContent='Geolocation not supported';return}
+        locBtn.disabled=true;locStatus.textContent='Getting location…';
+        navigator.geolocation.getCurrentPosition(
+            pos=>{
+                const lat=pos.coords.latitude.toFixed(6),lng=pos.coords.longitude.toFixed(6);
+                document.getElementById('latitude').value=lat;document.getElementById('longitude').value=lng;
+                locStatus.textContent='Location set ✓';locBtn.disabled=false;
+                if(locMap){locMap.setView([lat,lng],15);if(locMarker)locMap.removeLayer(locMarker);locMarker=L.marker([lat,lng]).addTo(locMap)}
+            },
+            err=>{locStatus.textContent='Could not get location — please enter manually';locBtn.disabled=false}
+        )
+    });
+
+    // Map picker
+    const mapDiv=document.getElementById('locMap'),mapToggle=document.getElementById('mapToggle');
+    let locMap=null,locMarker=null;
+    mapToggle.addEventListener('click',()=>{
+        if(mapDiv.style.display==='none'||!mapDiv.style.display){
+            mapDiv.style.display='block';
+            if(!locMap){
+                locMap=L.map('locMap').setView([48.7758,9.1829],13);
+                L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',{attribution:'© OpenStreetMap'}).addTo(locMap);
+                locMap.on('click',function(e){
+                    document.getElementById('latitude').value=e.latlng.lat.toFixed(6);
+                    document.getElementById('longitude').value=e.latlng.lng.toFixed(6);
+                    if(locMarker)locMap.removeLayer(locMarker);
+                    locMarker=L.marker(e.latlng).addTo(locMap);
+                    locStatus.textContent='Location set from map ✓';
+                });
+            }
+            setTimeout(()=>locMap.invalidateSize(),100);
+            mapToggle.textContent='🗺️ Hide map';
+        }else{
+            mapDiv.style.display='none';
+            mapToggle.textContent='🗺️ Pick on map';
+        }
+    });
+
+    form.addEventListener('submit',async e=>{
+        e.preventDefault();result.innerHTML='';
+        submitBtn.disabled=true;submitBtn.innerHTML='<span class="spinner"></span>Submitting…';
+        const fd=new FormData(form);
+        try{
+            const res=await fetch('/api/reports',{method:'POST',body:fd});
+            const data=await res.json();
+            if(res.ok){
+                result.innerHTML='<div class="msg success"><strong>Report submitted!</strong><dl class="result-grid"><dt>Category</dt><dd>'+esc(data.category)+'</dd><dt>Severity</dt><dd>'+esc(data.severity)+'</dd><dt>Department</dt><dd>'+esc(data.department)+'</dd><dt>Description</dt><dd>'+esc(data.description)+'</dd></dl></div>';
+                form.reset();preview.style.display='none';uploadPrompt.style.display=''
+            }else{
+                result.innerHTML='<div class="msg error">'+esc(data.error.message)+'</div>'
+            }
+        }catch(err){result.innerHTML='<div class="msg error">Network error — please try again</div>'}
+        submitBtn.disabled=false;submitBtn.textContent='Submit Report'
+    });
+
+    function esc(s){const d=document.createElement('div');d.textContent=s;return d.innerHTML}
+})();
+</script>
+</body>
+</html>

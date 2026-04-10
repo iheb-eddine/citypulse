@@ -1,0 +1,10 @@
+fastapi
+uvicorn[standard]
+sqlalchemy
+python-dotenv
+google-genai
+folium
+scikit-learn
+numpy
+jinja2
+python-multipart
