@@ -72,6 +72,7 @@
                 <img id="preview" alt="Photo preview">
             </div>
             <input type="file" id="photo" name="photo" accept="image/*" capture="environment">
+            <p style="margin-top:10px;font-size:0.8rem;color:var(--text-muted,#6b7280);text-align:center">🔒 Privacy Protected — Photo metadata is automatically stripped</p>
         </div>
 
         <div class="card">
@@ -90,6 +91,12 @@
                     <input type="text" id="longitude" name="longitude" placeholder="-180 to 180" inputmode="decimal">
                 </div>
             </div>
+        </div>
+
+        <div class="card">
+            <label for="description_text">Description</label>
+            <button type="button" class="loc-btn" id="voiceBtn" style="display:none;background:#e53935" aria-label="Describe by voice">🎙️ Describe by voice</button>
+            <textarea id="description_text" name="description_text" rows="3" placeholder="Describe the issue…" style="width:100%;padding:10px 12px;border:1px solid var(--border);border-radius:8px;font-size:1rem;resize:vertical;font-family:inherit"></textarea>
         </div>
 
         <button type="submit" class="submit-btn" id="submitBtn">Submit Report</button>
@@ -162,6 +169,22 @@
             mapToggle.textContent='🗺️ Pick on map';
         }
     });
+
+    // Voice recognition
+    const SpeechRec=window.SpeechRecognition||window.webkitSpeechRecognition;
+    const voiceBtn=document.getElementById('voiceBtn');
+    if(SpeechRec){
+        voiceBtn.style.display='';
+        let rec=null;
+        voiceBtn.addEventListener('click',()=>{
+            if(rec){rec.stop();return}
+            rec=new SpeechRec();rec.continuous=false;rec.interimResults=false;
+            rec.onresult=e=>{document.getElementById('description_text').value+=e.results[0][0].transcript};
+            rec.onend=()=>{rec=null;voiceBtn.textContent='🎙️ Describe by voice';voiceBtn.setAttribute('aria-label','Describe by voice')};
+            rec.onerror=()=>{rec=null;voiceBtn.textContent='🎙️ Describe by voice';voiceBtn.setAttribute('aria-label','Describe by voice')};
+            rec.start();voiceBtn.textContent='🔴 Recording…';voiceBtn.setAttribute('aria-label','Recording, click to stop');
+        });
+    }
 
     form.addEventListener('submit',async e=>{
         e.preventDefault();result.innerHTML='';

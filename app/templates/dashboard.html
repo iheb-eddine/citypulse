@@ -45,6 +45,21 @@
                 <div class="score">{{ health_score | round(1) }}</div>
                 <div class="max">/ 100</div>
             </div>
+            <div class="health-score {% if accessibility_score >= 70 %}health-green{% elif accessibility_score >= 40 %}health-amber{% else %}health-red{% endif %}" style="margin-top:12px">
+                <div class="label">Accessibility Impact Score</div>
+                <div class="score">{{ accessibility_score | round(1) }}</div>
+                <div class="max">/ 100</div>
+            </div>
+            {% if top_accessibility_categories %}
+            <div class="stat-section">
+                <h3>Top Accessibility Impact</h3>
+                <ol class="hotspot-list">
+                    {% for cat in top_accessibility_categories[:3] %}
+                    <li>{{ cat | capitalize }}</li>
+                    {% endfor %}
+                </ol>
+            </div>
+            {% endif %}
             <div class="stat-section">
                 <h3>Total Reports</h3>
                 <p>{{ total_reports }}</p>

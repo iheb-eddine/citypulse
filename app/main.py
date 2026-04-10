@@ -2,7 +2,7 @@
 
 import asyncio
 import json as _json
-from collections import Counter
+from collections import Counter, defaultdict
 from contextlib import asynccontextmanager
 from datetime import datetime, timedelta
 from pathlib import Path
@@ -10,6 +10,7 @@ from typing import Optional
 from uuid import uuid4
 
 import folium
+from folium.plugins import HeatMapWithTime
 import numpy as np
 from fastapi import Depends, FastAPI, File, Form, Request, UploadFile
 from fastapi.responses import HTMLResponse, JSONResponse, StreamingResponse
@@ -23,6 +24,9 @@ import os
 
 from dotenv import load_dotenv
 
+from io import BytesIO as _BytesIO
+from PIL import Image
+
 from app.database import create_tables, get_db
 from app.gemini import classify_image, FALLBACK
 from app.models import Report
@@ -32,6 +36,7 @@ load_dotenv()
 
 SEVERITY_COLORS = {"low": "green", "medium": "orange", "high": "orange", "critical": "red"}
 SEVERITY_WEIGHTS = {"low": 1, "medium": 2, "high": 3, "critical": 5}
+ACCESSIBILITY_WEIGHTS = {"pothole": 3, "streetlight": 2, "flooding": 2, "sign": 1.5, "graffiti": 1, "dumping": 1.5, "other": 1}
 
 
 def compute_health_score(reports: list) -> float:
@@ -56,6 +61,25 @@ def compute_category_breakdown(reports: list) -> dict:
 
 def compute_severity_breakdown(reports: list) -> dict:
     return dict(Counter(r.severity for r in reports))
+
+
+def compute_accessibility_score(reports: list) -> float:
+    if not reports:
+        return 100
+    weighted_sum = sum(
+        ACCESSIBILITY_WEIGHTS.get(r.category, 1) * SEVERITY_WEIGHTS.get(r.severity, 1)
+        for r in reports
+    )
+    max_possible = len(reports) * 3 * 5
+    return max(0, 100 - (weighted_sum / max_possible) * 100)
+
+
+def compute_top_accessibility_categories(reports: list) -> list:
+    totals: dict[str, float] = {}
+    for r in reports:
+        w = ACCESSIBILITY_WEIGHTS.get(r.category, 1) * SEVERITY_WEIGHTS.get(r.severity, 1)
+        totals[r.category] = totals.get(r.category, 0) + w
+    return sorted(totals, key=totals.get, reverse=True)
 
 
 # Stuttgart neighborhood bounding boxes: (lat_min, lat_max, lng_min, lng_max) -> name
@@ -153,6 +177,22 @@ def detect_file_type(data: bytes) -> Optional[str]:
     return None
 
 
+EXT_TO_FORMAT = {".jpg": "JPEG", ".png": "PNG", ".webp": "WEBP"}
+
+
+def strip_metadata(data: bytes, ext: str) -> bytes:
+    """Strip all metadata by copying pixel data to a fresh image."""
+    try:
+        img = Image.open(_BytesIO(data))
+        clean = Image.new(img.mode, img.size)
+        clean.paste(img)
+        buf = _BytesIO()
+        clean.save(buf, format=EXT_TO_FORMAT[ext])
+        return buf.getvalue()
+    except Exception:
+        return data
+
+
 def _error(code: str, message: str) -> JSONResponse:
     return JSONResponse(status_code=422, content={"error": {"code": code, "message": message}})
 
@@ -228,6 +268,8 @@ def _build_dashboard_data(db: Session, category: Optional[str] = None, severity:
     hotspots = compute_hotspots(reports)
     total = len(reports)
     statuses = dict(Counter(r.status for r in reports))
+    accessibility_score = compute_accessibility_score(reports)
+    top_accessibility_categories = compute_top_accessibility_categories(reports)
 
     if trend > 0:
         trend_text = f"↑ {trend} more reports this week"
@@ -241,6 +283,8 @@ def _build_dashboard_data(db: Session, category: Optional[str] = None, severity:
         "categories": categories, "severities": severities,
         "hotspots": hotspots, "trend_text": trend_text, "trend": trend,
         "statuses": statuses,
+        "accessibility_score": accessibility_score,
+        "top_accessibility_categories": top_accessibility_categories,
     }
 
 
@@ -255,6 +299,7 @@ async def dashboard(
     SEV_BADGE = {"low": "#43a047", "medium": "#fb8c00", "high": "#f4511e", "critical": "#c62828"}
     STATUS_LABEL = {"open": "Open", "in_progress": "In Progress", "resolved": "Resolved"}
     bounds = []
+    marker_group = folium.FeatureGroup(name="Reports")
     for r in reports:
         sev_color = SEV_BADGE.get(r.severity, "#1a73e8")
         status_label = STATUS_LABEL.get(r.status, "Open")
@@ -299,8 +344,18 @@ async def dashboard(
             location=[r.latitude, r.longitude],
             popup=folium.Popup(popup_html, max_width=220),
             icon=folium.Icon(color=icon_color),
-        ).add_to(m)
+        ).add_to(marker_group)
         bounds.append([r.latitude, r.longitude])
+    marker_group.add_to(m)
+    if reports:
+        by_day = defaultdict(list)
+        for r in reports:
+            day = r.created_at.date().isoformat()
+            by_day[day].append([r.latitude, r.longitude, SEVERITY_WEIGHTS.get(r.severity, 1) / 5])
+        index = sorted(by_day)
+        heat_data = [by_day[d] for d in index]
+        HeatMapWithTime(heat_data, index=index, name="Heatmap", auto_play=False).add_to(m)
+    folium.LayerControl().add_to(m)
     if bounds:
         m.fit_bounds(bounds, padding=[20, 20])
     map_html = m._repr_html_()
@@ -353,11 +408,34 @@ async def get_reports(db: Session = Depends(get_db)):
     ]
 
 
+@app.get("/api/reports/geojson")
+async def get_reports_geojson(db: Session = Depends(get_db)):
+    reports = db.query(Report).order_by(Report.created_at.desc()).all()
+    return {
+        "type": "FeatureCollection",
+        "features": [
+            {
+                "type": "Feature",
+                "geometry": {"type": "Point", "coordinates": [r.longitude, r.latitude]},
+                "properties": {
+                    "id": r.id, "photo_path": r.photo_path,
+                    "category": r.category, "severity": r.severity,
+                    "department": r.department, "description": r.description,
+                    "status": r.status, "confirmations": r.confirmations,
+                    "cluster_id": r.cluster_id, "created_at": str(r.created_at),
+                },
+            }
+            for r in reports
+        ],
+    }
+
+
 @app.post("/api/reports")
 async def create_report(
     photo: Optional[UploadFile] = File(None),
     latitude: Optional[str] = Form(None),
     longitude: Optional[str] = Form(None),
+    description_text: Optional[str] = Form(None),
     db: Session = Depends(get_db),
 ):
     # 1. File presence
@@ -379,6 +457,9 @@ async def create_report(
     ext = detect_file_type(content)
     if ext is None:
         return _error("INVALID_FILE_TYPE", "File must be JPEG, PNG, or WebP")
+
+    # 5b. Strip EXIF / metadata
+    content = strip_metadata(content, ext)
 
     # 6. Latitude validation
     if latitude is None:
@@ -407,6 +488,10 @@ async def create_report(
 
     # 9. Classify image via Gemini (falls back automatically on any failure)
     result = classify_image(content)
+
+    # 9b. Merge citizen voice description if provided
+    if description_text and description_text.strip():
+        result["description"] = f"AI: {result['description']} | Citizen: {description_text.strip()}"
 
     # 10. Create report
     report = Report(
