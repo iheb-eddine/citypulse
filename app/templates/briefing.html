@@ -1,0 +1,54 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>CityPulse — City Council Briefing</title>
+    <link rel="stylesheet" href="/static/css/style.css">
+    <script>document.documentElement.dataset.theme=localStorage.getItem('theme')||''</script>
+    <link rel="manifest" href="/static/manifest.json">
+    <meta name="theme-color" content="#1a73e8">
+    <style>
+        .briefing-container{max-width:720px;margin:2rem auto;padding:0 1rem}
+        .briefing-header{text-align:center;margin-bottom:1.5rem}
+        .briefing-header h1{font-size:1.6rem;color:var(--text);margin-bottom:0.25rem}
+        .briefing-ts{color:var(--text-muted);font-size:0.85rem}
+        .briefing-card{background:var(--card);border-radius:var(--radius);padding:2rem;box-shadow:var(--shadow-lg);white-space:pre-line;line-height:1.8;font-size:0.95rem;color:var(--text)}
+        .briefing-actions{text-align:center;margin-top:1.25rem}
+        .regen-btn{background:var(--blue);color:#fff;border:none;border-radius:var(--radius-sm);padding:10px 20px;font-size:0.9rem;font-weight:600;cursor:pointer;transition:background .2s}
+        .regen-btn:hover{background:var(--blue-dark)}
+        .regen-btn:disabled{opacity:0.5;cursor:not-allowed}
+        @media print{.nav-bar,.briefing-actions,.site-footer,.theme-toggle{display:none!important}.briefing-card{box-shadow:none;border:1px solid #ccc}}
+    </style>
+</head>
+<body>
+<div class="nav-bar">
+    <a href="/" class="brand">🏙️ CityPulse</a>
+    <nav><a href="/submit">Submit</a><a href="/">Dashboard</a><a href="/briefing" class="active">Briefing</a><button class="theme-toggle" onclick="document.documentElement.dataset.theme=document.documentElement.dataset.theme==='dark'?'light':'dark';localStorage.setItem('theme',document.documentElement.dataset.theme)" title="Toggle dark mode">🌓</button></nav>
+</div>
+<div class="briefing-container">
+    <div class="briefing-header">
+        <h1>City Council Briefing — Stuttgart</h1>
+        <div class="briefing-ts" id="briefingTs">Generated: {{ generated_at }}</div>
+    </div>
+    <div class="briefing-card" id="briefingText">{{ briefing }}</div>
+    <div class="briefing-actions">
+        <button class="regen-btn" id="regenBtn" onclick="regenerate()">🔄 Regenerate</button>
+    </div>
+</div>
+<footer class="site-footer">CityPulse — AI-powered urban issue triage <span class="badge">AlgoFest 2026</span></footer>
+<script>
+function regenerate(){
+    var btn=document.getElementById('regenBtn'),txt=document.getElementById('briefingText'),ts=document.getElementById('briefingTs');
+    btn.disabled=true;btn.textContent='Generating…';
+    fetch('/api/briefing').then(function(r){return r.json()}).then(function(d){
+        txt.textContent=d.briefing;ts.textContent='Generated: '+d.generated_at;
+    }).catch(function(){
+        txt.textContent='Failed to regenerate. Please try again.';
+    }).finally(function(){
+        btn.disabled=false;btn.textContent='🔄 Regenerate';
+    });
+}
+</script>
+</body>
+</html>

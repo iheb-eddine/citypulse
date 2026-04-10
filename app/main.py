@@ -448,3 +448,104 @@ async def chat(request: Request, db: Session = Depends(get_db)):
         return {"response": answer}
     except Exception:
         return {"response": "I'm having trouble right now. Please try again."}
+
+
+BRIEFING_PROMPT = """You are a municipal analyst writing a formal city council briefing for Stuttgart.
+
+DATA:
+{data}
+
+Write exactly 3 paragraphs:
+1. Executive summary — overall city health, total reports, trend
+2. Key findings — cite specific numbers, categories, severity counts, and neighborhood names
+3. Recommended priorities for city departments — actionable, based on the data
+
+Style: formal city council memo. Cite specific numbers. No greetings or sign-offs."""
+
+
+def _build_briefing_data(db: Session) -> tuple:
+    """Build briefing prompt data and stats dict. Returns (prompt_data_str, stats, reports)."""
+    reports, stats = _build_dashboard_data(db)
+    lines = [
+        f"Total reports: {stats['total_reports']}",
+        f"Health score: {stats['health_score']:.1f}/100",
+        f"Trend: {stats['trend_text']}",
+    ]
+    if stats["categories"]:
+        lines.append("Categories: " + ", ".join(f"{k}: {v}" for k, v in stats["categories"].items()))
+    if stats["severities"]:
+        lines.append("Severity: " + ", ".join(f"{k}: {v}" for k, v in stats["severities"].items()))
+    if stats["hotspots"]:
+        lines.append("Top hotspots: " + ", ".join(f"{h['name']} ({h['count']} reports)" for h in stats["hotspots"]))
+    cutoff = datetime.now() - timedelta(days=7)
+    critical = [r for r in reports if r.created_at >= cutoff and r.severity in ("critical", "high")]
+    critical.sort(key=lambda r: r.created_at, reverse=True)
+    for r in critical[:5]:
+        loc = neighborhood_for_coords(r.latitude, r.longitude)
+        desc = (r.description[:80] + "...") if len(r.description) > 80 else r.description
+        lines.append(f"- {r.category} ({r.severity}) near {loc}: {desc}")
+    return "\n".join(lines), stats, reports
+
+
+def _fallback_briefing(stats: dict) -> str:
+    """Generate a data-driven fallback briefing without AI."""
+    total = stats["total_reports"]
+    score = stats["health_score"]
+    trend = stats["trend_text"]
+    top_cat = max(stats["categories"], key=stats["categories"].get) if stats["categories"] else "N/A"
+    top_cat_n = stats["categories"].get(top_cat, 0)
+    hotspot = stats["hotspots"][0]["name"] if stats["hotspots"] else "N/A"
+    sev = stats["severities"]
+    crit = sev.get("critical", 0) + sev.get("high", 0)
+    return (
+        f"As of {datetime.now().strftime('%B %d, %Y')}, Stuttgart's CityPulse system has recorded "
+        f"{total} citizen reports with a city health score of {score:.1f}/100. {trend}.\n\n"
+        f"The most reported category is {top_cat} with {top_cat_n} reports. "
+        f"{crit} reports are classified as high or critical severity. "
+        f"The highest-activity area is {hotspot}.\n\n"
+        f"City departments should prioritize {top_cat} issues and focus resources on the {hotspot} area."
+    )
+
+
+def _generate_briefing(db: Session) -> dict:
+    """Generate briefing dict with 'briefing' and 'generated_at' keys."""
+    data_str, stats, _ = _build_briefing_data(db)
+    generated_at = datetime.now().strftime("%Y-%m-%dT%H:%M:%SZ")
+
+    if stats["total_reports"] == 0:
+        return {"briefing": "No reports have been submitted yet. The briefing will be available once citizen reports are recorded.", "generated_at": generated_at}
+
+    try:
+        api_key = os.environ.get("GROQ_API_KEY", "")
+        if not api_key:
+            return {"briefing": _fallback_briefing(stats), "generated_at": generated_at}
+
+        r = httpx.post(
+            "https://api.groq.com/openai/v1/chat/completions",
+            json={
+                "model": "llama-3.1-8b-instant",
+                "messages": [
+                    {"role": "system", "content": BRIEFING_PROMPT.format(data=data_str)},
+                    {"role": "user", "content": "Generate the city council briefing."},
+                ],
+                "max_tokens": 1024,
+            },
+            headers={"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"},
+            timeout=15,
+        )
+        r.raise_for_status()
+        text = r.json()["choices"][0]["message"]["content"]
+        return {"briefing": text, "generated_at": generated_at}
+    except Exception:
+        return {"briefing": _fallback_briefing(stats), "generated_at": generated_at}
+
+
+@app.get("/api/briefing")
+async def api_briefing(db: Session = Depends(get_db)):
+    return _generate_briefing(db)
+
+
+@app.get("/briefing")
+async def briefing_page(request: Request, db: Session = Depends(get_db)):
+    data = _generate_briefing(db)
+    return templates.TemplateResponse(request, "briefing.html", data)
