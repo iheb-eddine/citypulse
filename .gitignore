@@ -14,3 +14,4 @@ app/static/uploads/*
 dist/
 build/
 .pytest_cache/
+DEMO_SCRIPT.md

@@ -749,7 +749,42 @@ def _build_report_stats(db: Session, city: Optional[str] = None) -> str:
     if stats["hotspots"]:
         spots = ", ".join(f"{h['name']} ({h['count']} reports)" for h in stats["hotspots"])
         lines.append(f"Top hotspots: {spots}")
-    # Append individual recent reports for specific-question answering
+
+    # Per-category status breakdown and resolution rates
+    cat_status: dict[str, dict[str, int]] = {}
+    for r in reports:
+        cat_status.setdefault(r.category, {"open": 0, "in_progress": 0, "resolved": 0})
+        cat_status[r.category][r.status] = cat_status[r.category].get(r.status, 0) + 1
+    if cat_status:
+        lines.append("\nCATEGORY STATUS & RESOLUTION RATES:")
+        for cat, st in sorted(cat_status.items(), key=lambda x: sum(x[1].values()), reverse=True):
+            total = sum(st.values())
+            res_pct = round(st["resolved"] / total * 100) if total else 0
+            lines.append(f"- {cat}: {st['open']} open, {st['in_progress']} in progress, {st['resolved']} resolved ({res_pct}% resolution rate)")
+
+    # Risk scores by neighborhood (top 7)
+    risk_scores = compute_risk_scores(reports, city_key)
+    if risk_scores:
+        lines.append("\nNEIGHBORHOOD RISK SCORES (highest risk first):")
+        for rs in risk_scores[:7]:
+            lines.append(f"- {rs['name']}: grade {rs['grade']}, risk {rs['risk_score']}/100")
+
+    # Per-neighborhood breakdown (top 7 by report count)
+    nh_data: dict[str, list] = {}
+    for r in reports:
+        nh = neighborhood_for_coords(r.latitude, r.longitude, city_key)
+        nh_data.setdefault(nh, []).append(r)
+    if nh_data:
+        lines.append("\nNEIGHBORHOOD BREAKDOWN (top areas):")
+        for nh, reps in sorted(nh_data.items(), key=lambda x: len(x[1]), reverse=True)[:7]:
+            cats = Counter(r.category for r in reps)
+            top_cats = ", ".join(f"{c}: {n}" for c, n in cats.most_common(3))
+            sevs = Counter(r.severity for r in reps)
+            sev_str = ", ".join(f"{s}: {n}" for s, n in sevs.most_common())
+            unresolved = sum(1 for r in reps if r.status != "resolved")
+            lines.append(f"- {nh} ({len(reps)} reports): categories [{top_cats}], severity [{sev_str}], {unresolved} unresolved")
+
+    # Recent individual reports for specific-question answering
     cutoff = datetime.now() - timedelta(days=7)
     recent = sorted(
         [r for r in reports if r.created_at >= cutoff],
@@ -802,7 +837,7 @@ async def chat(request: Request, db: Session = Depends(get_db)):
                         {"role": "system", "content": system_prompt},
                         {"role": "user", "content": message},
                     ],
-                    "max_tokens": 200,
+                    "max_tokens": 512,
                 },
                 headers={"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"},
                 timeout=10,

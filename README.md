@@ -18,7 +18,7 @@ Citizens snap a photo of an urban issue — pothole, broken streetlight, illegal
 |---|---|
 | 📸 **Photo Upload & AI Classification** | Upload a photo → Groq Llama 4 Scout vision model classifies category, severity, and department instantly |
 | 🗺️ **Interactive Map Dashboard** | Folium/Leaflet map with color-coded markers, popups with status controls, and layer toggle |
-| 🔥 **Heatmap with Time Slider** | HeatMapWithTime shows report density evolution day-by-day |
+| 🔥 **Heatmap Density Overlay** | Heatmap overlay shows report density across the city |
 | 📊 **DBSCAN Spatial Clustering** | Groups nearby reports into actionable hotspots (eps=0.003, min_samples=3) |
 | 💯 **City Health Score** | Severity-weighted metric (0–100) — a single KPI for urban wellbeing |
 | ♿ **Accessibility Impact Score** | Weighted score factoring category impact on mobility and accessibility |
@@ -45,7 +45,7 @@ Citizens snap a photo of an urban issue — pothole, broken streetlight, illegal
 | **SQLite + SQLAlchemy** | Database and ORM |
 | **Groq API** | AI — Llama 4 Scout (vision classification), Llama 3.1 8B (chat, briefing, news translation) |
 | **scikit-learn (DBSCAN)** | Geospatial clustering of reports |
-| **Folium / Leaflet.js** | Interactive map with heatmap time slider |
+| **Folium / Leaflet.js** | Interactive map with heatmap density overlay |
 | **Pillow** | EXIF metadata stripping for privacy |
 | **httpx** | HTTP client for Groq API, RSS feeds, seed data fetching |
 | **Jinja2** | Server-side HTML templates |
