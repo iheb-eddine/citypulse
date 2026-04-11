@@ -82,46 +82,83 @@ def compute_top_accessibility_categories(reports: list) -> list:
     return sorted(totals, key=totals.get, reverse=True)
 
 
-# Stuttgart neighborhood bounding boxes: (lat_min, lat_max, lng_min, lng_max) -> name
-NEIGHBORHOODS = [
-    (48.781, 48.788, 9.177, 9.186, "Hauptbahnhof"),
-    (48.800, 48.809, 9.209, 9.219, "Bad Cannstatt"),
-    (48.767, 48.775, 9.164, 9.176, "Stuttgart-West"),
-    (48.757, 48.767, 9.164, 9.176, "Stuttgart-Süd"),
-    (48.786, 48.795, 9.188, 9.202, "Stuttgart-Nord"),
-    (48.764, 48.773, 9.204, 9.216, "Stuttgart-Ost"),
-    (48.750, 48.759, 9.153, 9.167, "Vaihingen"),
-    (48.741, 48.750, 9.170, 9.182, "Möhringen"),
-    (48.774, 48.782, 9.150, 9.162, "Botnang"),
-    (48.806, 48.815, 9.225, 9.236, "Münster"),
-    (48.730, 48.740, 9.145, 9.156, "Büsnau"),
-    (48.791, 48.800, 9.135, 9.148, "Feuerbach"),
-    (48.756, 48.764, 9.184, 9.196, "Degerloch"),
-    (48.746, 48.755, 9.200, 9.212, "Sillenbuch"),
-    (48.781, 48.790, 9.155, 9.167, "Zuffenhausen"),
-    (48.766, 48.775, 9.215, 9.226, "Wangen"),
-    (48.736, 48.745, 9.180, 9.192, "Plieningen"),
-]
+CITIES = {
+    "stuttgart": {
+        "name": "Stuttgart",
+        "lat": 48.7758,
+        "lng": 9.1829,
+        "zoom": 13,
+        "neighborhoods": [
+            (48.781, 48.788, 9.177, 9.186, "Hauptbahnhof"),
+            (48.800, 48.809, 9.209, 9.219, "Bad Cannstatt"),
+            (48.767, 48.775, 9.164, 9.176, "Stuttgart-West"),
+            (48.757, 48.767, 9.164, 9.176, "Stuttgart-Süd"),
+            (48.786, 48.795, 9.188, 9.202, "Stuttgart-Nord"),
+            (48.764, 48.773, 9.204, 9.216, "Stuttgart-Ost"),
+            (48.750, 48.759, 9.153, 9.167, "Vaihingen"),
+            (48.741, 48.750, 9.170, 9.182, "Möhringen"),
+            (48.774, 48.782, 9.150, 9.162, "Botnang"),
+            (48.806, 48.815, 9.225, 9.236, "Münster"),
+            (48.730, 48.740, 9.145, 9.156, "Büsnau"),
+            (48.791, 48.800, 9.135, 9.148, "Feuerbach"),
+            (48.756, 48.764, 9.184, 9.196, "Degerloch"),
+            (48.746, 48.755, 9.200, 9.212, "Sillenbuch"),
+            (48.781, 48.790, 9.155, 9.167, "Zuffenhausen"),
+            (48.766, 48.775, 9.215, 9.226, "Wangen"),
+            (48.736, 48.745, 9.180, 9.192, "Plieningen"),
+        ],
+        "bbox": (48.70, 48.85, 9.10, 9.30),
+        "news_keywords": {"stuttgart", "cannstatt", "vaihingen", "degerloch", "feuerbach",
+                          "zuffenhausen", "möhringen", "botnang", "plieningen", "sillenbuch",
+                          "hauptbahnhof", "neckar", "killesberg", "schlossplatz", "königstraße",
+                          "s-bahn", "ssb", "vvs"},
+        "rss_feeds": [
+            "https://www.swr.de/~rss/swraktuell-bw-100.xml",
+            "https://www.stuttgarter-zeitung.de/rss/topthemen.rss.feed",
+        ],
+    },
+}
+
+DEFAULT_CITY = "stuttgart"
 
 
-def neighborhood_for_coords(lat: float, lng: float) -> str:
-    for lat_min, lat_max, lng_min, lng_max, name in NEIGHBORHOODS:
+def get_city(city_key: Optional[str] = None) -> tuple[str, dict]:
+    """Return (city_key, city_config). Falls back to DEFAULT_CITY."""
+    key = city_key if city_key in CITIES else DEFAULT_CITY
+    return key, CITIES[key]
+
+
+def nearest_city(lat: float, lng: float) -> str:
+    """Return the city key nearest to the given coordinates."""
+    best, best_dist = DEFAULT_CITY, float("inf")
+    for key, cfg in CITIES.items():
+        d = (lat - cfg["lat"]) ** 2 + (lng - cfg["lng"]) ** 2
+        if d < best_dist:
+            best, best_dist = key, d
+    return best
+
+
+def neighborhood_for_coords(lat: float, lng: float, city_key: Optional[str] = None) -> str:
+    key, cfg = get_city(city_key)
+    for lat_min, lat_max, lng_min, lng_max, name in cfg["neighborhoods"]:
         if lat_min <= lat <= lat_max and lng_min <= lng <= lng_max:
             return name
-    # Check if within greater Stuttgart area
-    if 48.70 <= lat <= 48.85 and 9.10 <= lng <= 9.30:
-        return "Stuttgart"
+    bbox = cfg.get("bbox")
+    if bbox:
+        lat_min, lat_max, lng_min, lng_max = bbox
+        if lat_min <= lat <= lat_max and lng_min <= lng <= lng_max:
+            return cfg["name"]
     return "Unknown area"
 
 
-def compute_hotspots(reports: list) -> list:
+def compute_hotspots(reports: list, city_key: Optional[str] = None) -> list:
     clusters = Counter(r.cluster_id for r in reports if r.cluster_id is not None)
     hotspots = []
     for cid, cnt in clusters.most_common(3):
         cluster_reports = [r for r in reports if r.cluster_id == cid]
         avg_lat = sum(r.latitude for r in cluster_reports) / len(cluster_reports)
         avg_lng = sum(r.longitude for r in cluster_reports) / len(cluster_reports)
-        name = neighborhood_for_coords(avg_lat, avg_lng)
+        name = neighborhood_for_coords(avg_lat, avg_lng, city_key)
         hotspots.append({"cluster_id": cid, "count": cnt, "name": name})
     return hotspots
 
@@ -210,6 +247,10 @@ async def lifespan(app: FastAPI):
         if "status" not in cols:
             conn.execute(text("ALTER TABLE reports ADD COLUMN status TEXT NOT NULL DEFAULT 'open'"))
             conn.commit()
+        if "city" not in cols:
+            conn.execute(text("ALTER TABLE reports ADD COLUMN city TEXT NOT NULL DEFAULT 'stuttgart'"))
+            conn.execute(text("UPDATE reports SET city = 'stuttgart' WHERE city IS NULL"))
+            conn.commit()
     yield
 
 
@@ -241,17 +282,19 @@ async def sse_stream():
 
 
 @app.get("/submit")
-async def submit_page(request: Request):
-    return templates.TemplateResponse(request, "submit.html")
+async def submit_page(request: Request, city: Optional[str] = None):
+    city_key, _ = get_city(city)
+    return templates.TemplateResponse(request, "submit.html", {"city": city_key, "cities": CITIES})
 
 
 VALID_CATEGORIES = {"pothole", "streetlight", "graffiti", "flooding", "dumping", "sign", "other", "unclassified"}
 VALID_SEVERITIES = {"low", "medium", "high", "critical"}
 
 
-def _build_dashboard_data(db: Session, category: Optional[str] = None, severity: Optional[str] = None):
+def _build_dashboard_data(db: Session, category: Optional[str] = None, severity: Optional[str] = None, city: Optional[str] = None):
     """Shared logic for dashboard HTML and API."""
-    all_reports = db.query(Report).all()
+    city_key, city_cfg = get_city(city)
+    all_reports = db.query(Report).filter(Report.city == city_key).all()
     run_clustering(all_reports, db)
 
     # Filter after clustering so cluster_ids stay consistent
@@ -265,7 +308,7 @@ def _build_dashboard_data(db: Session, category: Optional[str] = None, severity:
     trend = compute_trend(reports)
     categories = compute_category_breakdown(reports)
     severities = compute_severity_breakdown(reports)
-    hotspots = compute_hotspots(reports)
+    hotspots = compute_hotspots(reports, city_key)
     total = len(reports)
     statuses = dict(Counter(r.status for r in reports))
     accessibility_score = compute_accessibility_score(reports)
@@ -285,6 +328,7 @@ def _build_dashboard_data(db: Session, category: Optional[str] = None, severity:
         "statuses": statuses,
         "accessibility_score": accessibility_score,
         "top_accessibility_categories": top_accessibility_categories,
+        "city_key": city_key, "city_cfg": city_cfg,
     }
 
 
@@ -293,9 +337,12 @@ def _build_dashboard_data(db: Session, category: Optional[str] = None, severity:
 async def dashboard(
     request: Request, db: Session = Depends(get_db),
     category: Optional[str] = None, severity: Optional[str] = None,
+    city: Optional[str] = None,
 ):
-    reports, stats = _build_dashboard_data(db, category, severity)
-    m = folium.Map(location=[48.7758, 9.1829], zoom_start=13)
+    reports, stats = _build_dashboard_data(db, category, severity, city)
+    city_cfg = stats["city_cfg"]
+    city_key = stats["city_key"]
+    m = folium.Map(location=[city_cfg["lat"], city_cfg["lng"]], zoom_start=city_cfg["zoom"])
     SEV_BADGE = {"low": "#43a047", "medium": "#fb8c00", "high": "#f4511e", "critical": "#c62828"}
     STATUS_LABEL = {"open": "Open", "in_progress": "In Progress", "resolved": "Resolved"}
     bounds = []
@@ -366,6 +413,8 @@ async def dashboard(
             **stats,
             "filter_category": category or "",
             "filter_severity": severity or "",
+            "city": city_key,
+            "cities": CITIES,
         },
     )
 
@@ -374,8 +423,9 @@ async def dashboard(
 async def api_dashboard(
     db: Session = Depends(get_db),
     category: Optional[str] = None, severity: Optional[str] = None,
+    city: Optional[str] = None,
 ):
-    reports, stats = _build_dashboard_data(db, category, severity)
+    reports, stats = _build_dashboard_data(db, category, severity, city)
     return {
         **stats,
         "reports": [
@@ -393,8 +443,9 @@ async def api_dashboard(
 
 
 @app.get("/api/reports")
-async def get_reports(db: Session = Depends(get_db)):
-    reports = db.query(Report).order_by(Report.created_at.desc()).all()
+async def get_reports(db: Session = Depends(get_db), city: Optional[str] = None):
+    city_key, _ = get_city(city)
+    reports = db.query(Report).filter(Report.city == city_key).order_by(Report.created_at.desc()).all()
     return [
         {
             "id": r.id, "photo_path": r.photo_path,
@@ -409,8 +460,9 @@ async def get_reports(db: Session = Depends(get_db)):
 
 
 @app.get("/api/reports/geojson")
-async def get_reports_geojson(db: Session = Depends(get_db)):
-    reports = db.query(Report).order_by(Report.created_at.desc()).all()
+async def get_reports_geojson(db: Session = Depends(get_db), city: Optional[str] = None):
+    city_key, _ = get_city(city)
+    reports = db.query(Report).filter(Report.city == city_key).order_by(Report.created_at.desc()).all()
     return {
         "type": "FeatureCollection",
         "features": [
@@ -436,6 +488,7 @@ async def create_report(
     latitude: Optional[str] = Form(None),
     longitude: Optional[str] = Form(None),
     description_text: Optional[str] = Form(None),
+    city: Optional[str] = Form(None),
     db: Session = Depends(get_db),
 ):
     # 1. File presence
@@ -493,11 +546,15 @@ async def create_report(
     if description_text and description_text.strip():
         result["description"] = f"AI: {result['description']} | Citizen: {description_text.strip()}"
 
-    # 10. Create report
+    # 10. Resolve city
+    report_city = city if city in CITIES else nearest_city(lat, lng)
+
+    # 11. Create report
     report = Report(
         photo_path=f"/static/uploads/{filename}",
         latitude=lat,
         longitude=lng,
+        city=report_city,
         **result,
     )
     db.add(report)
@@ -509,7 +566,8 @@ async def create_report(
         "id": report.id,
         "category": report.category,
         "severity": report.severity,
-        "neighborhood": neighborhood_for_coords(report.latitude, report.longitude),
+        "neighborhood": neighborhood_for_coords(report.latitude, report.longitude, report.city),
+        "city": report.city,
     })
 
     # 11. Return 201
@@ -591,12 +649,13 @@ Rules:
 - Never say "I don't have real-time data"
 - Never ask "how can I help you" — just answer the question"""
 
-CHAT_CITY = "Stuttgart"
+CHAT_CITY = None  # Deprecated — city is now dynamic
 
 
-def _build_report_stats(db: Session) -> str:
+def _build_report_stats(db: Session, city: Optional[str] = None) -> str:
     """Build a text summary of report data for the chat system prompt."""
-    reports, stats = _build_dashboard_data(db)
+    reports, stats = _build_dashboard_data(db, city=city)
+    city_key = stats["city_key"]
     if stats["total_reports"] == 0:
         return "No reports have been submitted yet."
     lines = [f"Total reports: {stats['total_reports']}"]
@@ -621,7 +680,7 @@ def _build_report_stats(db: Session) -> str:
         lines.append("\nRECENT INDIVIDUAL REPORTS (last 7 days):")
         for r in recent:
             ts = r.created_at.strftime("%Y-%m-%d %H:%M")
-            loc = neighborhood_for_coords(r.latitude, r.longitude)
+            loc = neighborhood_for_coords(r.latitude, r.longitude, city_key)
             desc = (r.description[:100] + "...") if len(r.description) > 100 else r.description
             lines.append(f"- [{ts}] {r.category} ({r.severity}) near {loc} — {desc}")
     return "\n".join(lines)
@@ -638,13 +697,17 @@ async def chat(request: Request, db: Session = Depends(get_db)):
     if not message:
         return JSONResponse(status_code=422, content={"error": {"code": "EMPTY_MESSAGE", "message": "Message is required"}})
 
+    city_key = body.get("city") if isinstance(body, dict) else None
+    city_key, city_cfg = get_city(city_key)
+    city_name = city_cfg["name"]
+
     try:
-        report_stats = _build_report_stats(db)
-        news = fetch_news()
+        report_stats = _build_report_stats(db, city=city_key)
+        news = fetch_news(city_key)
         news_text = "\n".join(f"- {n['title']}" for n in news) if news else "No recent news available."
 
         system_prompt = CHAT_SYSTEM_PROMPT.format(
-            city=CHAT_CITY, report_stats=report_stats, news_headlines=news_text,
+            city=city_name, report_stats=report_stats, news_headlines=news_text,
         )
 
         api_key = os.environ.get("GROQ_API_KEY", "")
@@ -671,7 +734,7 @@ async def chat(request: Request, db: Session = Depends(get_db)):
         return {"response": "I'm having trouble right now. Please try again."}
 
 
-BRIEFING_PROMPT = """You are a municipal analyst writing a formal city council briefing for Stuttgart.
+BRIEFING_PROMPT = """You are a municipal analyst writing a formal city council briefing for {city}.
 
 DATA:
 {data}
@@ -684,9 +747,10 @@ Write exactly 3 paragraphs:
 Style: formal city council memo. Cite specific numbers. No greetings or sign-offs."""
 
 
-def _build_briefing_data(db: Session) -> tuple:
+def _build_briefing_data(db: Session, city: Optional[str] = None) -> tuple:
     """Build briefing prompt data and stats dict. Returns (prompt_data_str, stats, reports)."""
-    reports, stats = _build_dashboard_data(db)
+    reports, stats = _build_dashboard_data(db, city=city)
+    city_key = stats["city_key"]
     lines = [
         f"Total reports: {stats['total_reports']}",
         f"Health score: {stats['health_score']:.1f}/100",
@@ -702,7 +766,7 @@ def _build_briefing_data(db: Session) -> tuple:
     critical = [r for r in reports if r.created_at >= cutoff and r.severity in ("critical", "high")]
     critical.sort(key=lambda r: r.created_at, reverse=True)
     for r in critical[:5]:
-        loc = neighborhood_for_coords(r.latitude, r.longitude)
+        loc = neighborhood_for_coords(r.latitude, r.longitude, city_key)
         desc = (r.description[:80] + "...") if len(r.description) > 80 else r.description
         lines.append(f"- {r.category} ({r.severity}) near {loc}: {desc}")
     return "\n".join(lines), stats, reports
@@ -713,13 +777,14 @@ def _fallback_briefing(stats: dict) -> str:
     total = stats["total_reports"]
     score = stats["health_score"]
     trend = stats["trend_text"]
+    city_name = stats["city_cfg"]["name"]
     top_cat = max(stats["categories"], key=stats["categories"].get) if stats["categories"] else "N/A"
     top_cat_n = stats["categories"].get(top_cat, 0)
     hotspot = stats["hotspots"][0]["name"] if stats["hotspots"] else "N/A"
     sev = stats["severities"]
     crit = sev.get("critical", 0) + sev.get("high", 0)
     return (
-        f"As of {datetime.now().strftime('%B %d, %Y')}, Stuttgart's CityPulse system has recorded "
+        f"As of {datetime.now().strftime('%B %d, %Y')}, {city_name}'s CityPulse system has recorded "
         f"{total} citizen reports with a city health score of {score:.1f}/100. {trend}.\n\n"
         f"The most reported category is {top_cat} with {top_cat_n} reports. "
         f"{crit} reports are classified as high or critical severity. "
@@ -728,9 +793,10 @@ def _fallback_briefing(stats: dict) -> str:
     )
 
 
-def _generate_briefing(db: Session) -> dict:
+def _generate_briefing(db: Session, city: Optional[str] = None) -> dict:
     """Generate briefing dict with 'briefing' and 'generated_at' keys."""
-    data_str, stats, _ = _build_briefing_data(db)
+    data_str, stats, _ = _build_briefing_data(db, city=city)
+    city_name = stats["city_cfg"]["name"]
     generated_at = datetime.now().strftime("%Y-%m-%dT%H:%M:%SZ")
 
     if stats["total_reports"] == 0:
@@ -746,7 +812,7 @@ def _generate_briefing(db: Session) -> dict:
             json={
                 "model": "llama-3.1-8b-instant",
                 "messages": [
-                    {"role": "system", "content": BRIEFING_PROMPT.format(data=data_str)},
+                    {"role": "system", "content": BRIEFING_PROMPT.format(city=city_name, data=data_str)},
                     {"role": "user", "content": "Generate the city council briefing."},
                 ],
                 "max_tokens": 1024,
@@ -762,11 +828,14 @@ def _generate_briefing(db: Session) -> dict:
 
 
 @app.get("/api/briefing")
-async def api_briefing(db: Session = Depends(get_db)):
-    return _generate_briefing(db)
+async def api_briefing(db: Session = Depends(get_db), city: Optional[str] = None):
+    return _generate_briefing(db, city=city)
 
 
 @app.get("/briefing")
-async def briefing_page(request: Request, db: Session = Depends(get_db)):
-    data = _generate_briefing(db)
+async def briefing_page(request: Request, db: Session = Depends(get_db), city: Optional[str] = None):
+    city_key, _ = get_city(city)
+    data = _generate_briefing(db, city=city)
+    data["city"] = city_key
+    data["cities"] = CITIES
     return templates.TemplateResponse(request, "briefing.html", data)

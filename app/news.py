@@ -1,4 +1,4 @@
-"""RSS news fetcher — Stuttgart-focused, with English translation via Groq."""
+"""RSS news fetcher — city-aware, with English translation via Groq."""
 
 import os
 import time
@@ -9,31 +9,24 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
-RSS_FEEDS = [
-    "https://www.swr.de/~rss/swraktuell-bw-100.xml",
-    "https://www.stuttgarter-zeitung.de/rss/topthemen.rss.feed",
-]
 CACHE_TTL = 900
 
-STUTTGART_KEYWORDS = {"stuttgart", "cannstatt", "vaihingen", "degerloch", "feuerbach",
-                      "zuffenhausen", "möhringen", "botnang", "plieningen", "sillenbuch",
-                      "hauptbahnhof", "neckar", "killesberg", "schlossplatz", "königstraße",
-                      "s-bahn", "ssb", "vvs"}
+_cache: dict = {}
 
-_cache: dict = {"items": [], "ts": 0}
-
-FALLBACK_NEWS = [
-    {"title": "Stuttgart expands S-Bahn network with new express lines to suburbs", "link": ""},
-    {"title": "City council approves €2M road repair budget for Stuttgart-Mitte district", "link": ""},
-    {"title": "New cycling lanes open along Neckar river connecting Bad Cannstatt to city center", "link": ""},
-    {"title": "Stuttgart ranks among top German cities for urban green space per capita", "link": ""},
-    {"title": "Residents call for better street lighting in Zuffenhausen after safety concerns", "link": ""},
-]
+FALLBACK_NEWS = {
+    "stuttgart": [
+        {"title": "Stuttgart expands S-Bahn network with new express lines to suburbs", "link": ""},
+        {"title": "City council approves €2M road repair budget for Stuttgart-Mitte district", "link": ""},
+        {"title": "New cycling lanes open along Neckar river connecting Bad Cannstatt to city center", "link": ""},
+        {"title": "Stuttgart ranks among top German cities for urban green space per capita", "link": ""},
+        {"title": "Residents call for better street lighting in Zuffenhausen after safety concerns", "link": ""},
+    ],
+}
 
 
-def _is_stuttgart_relevant(title: str, desc: str = "") -> bool:
+def _is_relevant(title: str, desc: str, keywords: set) -> bool:
     text = (title + " " + desc).lower()
-    return any(kw in text for kw in STUTTGART_KEYWORDS)
+    return any(kw in text for kw in keywords)
 
 
 def _translate_headlines(headlines: list[dict]) -> list[dict]:
@@ -68,12 +61,19 @@ def _translate_headlines(headlines: list[dict]) -> list[dict]:
         return headlines
 
 
-def fetch_news() -> list[dict]:
-    """Fetch Stuttgart-relevant RSS headlines, translated to English."""
+def fetch_news(city_key: str = "stuttgart") -> list[dict]:
+    """Fetch city-relevant RSS headlines, translated to English."""
+    from app.main import CITIES, DEFAULT_CITY
+    city_cfg = CITIES.get(city_key, CITIES[DEFAULT_CITY])
+    keywords = city_cfg.get("news_keywords", set())
+    feeds = city_cfg.get("rss_feeds", [])
+
     now = time.time()
-    if _cache["items"] and (now - _cache["ts"]) < CACHE_TTL:
-        return _cache["items"]
-    for url in RSS_FEEDS:
+    cached = _cache.get(city_key)
+    if cached and (now - cached["ts"]) < CACHE_TTL:
+        return cached["items"]
+
+    for url in feeds:
         try:
             r = httpx.get(url, timeout=5, follow_redirects=True)
             r.raise_for_status()
@@ -83,15 +83,14 @@ def fetch_news() -> list[dict]:
                 title = item.findtext("title", "").strip()
                 desc = item.findtext("description", "").strip()
                 link = item.findtext("link", "").strip()
-                if title and _is_stuttgart_relevant(title, desc):
+                if title and _is_relevant(title, desc, keywords):
                     items.append({"title": title, "link": link})
                 if len(items) >= 5:
                     break
             if items:
                 items = _translate_headlines(items)
-                _cache["items"] = items
-                _cache["ts"] = now
+                _cache[city_key] = {"items": items, "ts": now}
                 return items
         except Exception:
             continue
-    return list(FALLBACK_NEWS)
+    return list(FALLBACK_NEWS.get(city_key, []))

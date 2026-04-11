@@ -52,8 +52,15 @@
 </head>
 <body>
 <div class="nav-bar">
-    <a href="/" class="brand">🏙️ CityPulse</a>
-    <nav><a href="/submit" class="active">Submit</a><a href="/">Dashboard</a><a href="/briefing">Briefing</a><button class="theme-toggle" onclick="document.documentElement.dataset.theme=document.documentElement.dataset.theme==='dark'?'light':'dark';localStorage.setItem('theme',document.documentElement.dataset.theme)" title="Toggle dark mode">🌓</button></nav>
+    <a href="/?city={{ city }}" class="brand">🏙️ CityPulse</a>
+    <nav>
+        <select class="city-select" aria-label="Select city" onchange="window.location.href='/submit?city='+this.value">
+            {% for key, cfg in cities.items() %}
+            <option value="{{ key }}" {{ "selected" if city == key else "" }}>{{ cfg.name }}</option>
+            {% endfor %}
+        </select>
+        <a href="/submit?city={{ city }}" class="active">Submit</a><a href="/?city={{ city }}">Dashboard</a><a href="/briefing?city={{ city }}">Briefing</a><button class="theme-toggle" onclick="document.documentElement.dataset.theme=document.documentElement.dataset.theme==='dark'?'light':'dark';localStorage.setItem('theme',document.documentElement.dataset.theme)" title="Toggle dark mode">🌓</button>
+    </nav>
 </div>
 <div class="container">
     <header>
@@ -62,6 +69,7 @@
     </header>
 
     <form id="reportForm" enctype="multipart/form-data">
+        <input type="hidden" id="cityField" name="city" value="{{ city }}">
         <div class="card">
             <label for="photo">Photo</label>
             <div class="upload-area" id="uploadArea" role="button" tabindex="0" aria-label="Click or drag to upload a photo">
@@ -152,7 +160,7 @@
         if(mapDiv.style.display==='none'||!mapDiv.style.display){
             mapDiv.style.display='block';
             if(!locMap){
-                locMap=L.map('locMap').setView([48.7758,9.1829],13);
+                locMap=L.map('locMap').setView([{{ cities[city].lat }},{{ cities[city].lng }}],{{ cities[city].zoom }});
                 L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',{attribution:'© OpenStreetMap'}).addTo(locMap);
                 locMap.on('click',function(e){
                     document.getElementById('latitude').value=e.latlng.lat.toFixed(6);

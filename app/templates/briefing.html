@@ -23,12 +23,19 @@
 </head>
 <body>
 <div class="nav-bar">
-    <a href="/" class="brand">🏙️ CityPulse</a>
-    <nav><a href="/submit">Submit</a><a href="/">Dashboard</a><a href="/briefing" class="active">Briefing</a><button class="theme-toggle" onclick="document.documentElement.dataset.theme=document.documentElement.dataset.theme==='dark'?'light':'dark';localStorage.setItem('theme',document.documentElement.dataset.theme)" title="Toggle dark mode">🌓</button></nav>
+    <a href="/?city={{ city }}" class="brand">🏙️ CityPulse</a>
+    <nav>
+        <select class="city-select" aria-label="Select city" onchange="window.location.href='/briefing?city='+this.value">
+            {% for key, cfg in cities.items() %}
+            <option value="{{ key }}" {{ "selected" if city == key else "" }}>{{ cfg.name }}</option>
+            {% endfor %}
+        </select>
+        <a href="/submit?city={{ city }}">Submit</a><a href="/?city={{ city }}">Dashboard</a><a href="/briefing?city={{ city }}" class="active">Briefing</a><button class="theme-toggle" onclick="document.documentElement.dataset.theme=document.documentElement.dataset.theme==='dark'?'light':'dark';localStorage.setItem('theme',document.documentElement.dataset.theme)" title="Toggle dark mode">🌓</button>
+    </nav>
 </div>
 <div class="briefing-container">
     <div class="briefing-header">
-        <h1>City Council Briefing — Stuttgart</h1>
+        <h1>City Council Briefing — {{ cities[city].name }}</h1>
         <div class="briefing-ts" id="briefingTs">Generated: {{ generated_at }}</div>
     </div>
     <div class="briefing-card" id="briefingText">{{ briefing }}</div>
@@ -41,7 +48,7 @@
 function regenerate(){
     var btn=document.getElementById('regenBtn'),txt=document.getElementById('briefingText'),ts=document.getElementById('briefingTs');
     btn.disabled=true;btn.textContent='Generating…';
-    fetch('/api/briefing').then(function(r){return r.json()}).then(function(d){
+    fetch('/api/briefing?city={{ city }}').then(function(r){return r.json()}).then(function(d){
         txt.textContent=d.briefing;ts.textContent='Generated: '+d.generated_at;
     }).catch(function(){
         txt.textContent='Failed to regenerate. Please try again.';

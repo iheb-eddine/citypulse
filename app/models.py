@@ -27,6 +27,7 @@ class Report(Base):
     photo_path = Column(Text, nullable=False)
     latitude = Column(Float, nullable=False)
     longitude = Column(Float, nullable=False)
+    city = Column(Text, nullable=False, server_default=text("'stuttgart'"))
     category = Column(Text, nullable=False)
     severity = Column(Text, nullable=False)
     department = Column(Text, nullable=False)

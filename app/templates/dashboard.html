@@ -12,11 +12,19 @@
 </head>
 <body>
     <div class="nav-bar">
-        <a href="/" class="brand">🏙️ CityPulse</a>
-        <nav><a href="/submit">Submit</a><a href="/" class="active">Dashboard</a><a href="/briefing">Briefing</a><button class="theme-toggle" onclick="document.documentElement.dataset.theme=document.documentElement.dataset.theme==='dark'?'light':'dark';localStorage.setItem('theme',document.documentElement.dataset.theme)" title="Toggle dark mode">🌓</button></nav>
+        <a href="/?city={{ city }}" class="brand">🏙️ CityPulse</a>
+        <nav>
+            <select class="city-select" aria-label="Select city" onchange="window.location.href='/?city='+this.value">
+                {% for key, cfg in cities.items() %}
+                <option value="{{ key }}" {{ "selected" if city == key else "" }}>{{ cfg.name }}</option>
+                {% endfor %}
+            </select>
+            <a href="/submit?city={{ city }}">Submit</a><a href="/?city={{ city }}" class="active">Dashboard</a><a href="/briefing?city={{ city }}">Briefing</a><button class="theme-toggle" onclick="document.documentElement.dataset.theme=document.documentElement.dataset.theme==='dark'?'light':'dark';localStorage.setItem('theme',document.documentElement.dataset.theme)" title="Toggle dark mode">🌓</button>
+        </nav>
     </div>
     <div class="filter-bar">
         <form method="get" action="/dashboard" class="filter-form">
+            <input type="hidden" name="city" value="{{ city }}">
             <label for="category">Category:</label>
             <select name="category" id="category" onchange="this.form.submit()">
                 <option value="">All</option>
@@ -157,7 +165,7 @@
         input.value='';input.disabled=true;document.getElementById('chatSend').disabled=true;
         msgs.insertAdjacentHTML('beforeend','<div class="chat-msg ai chat-loading" id="chatLoading">Thinking<span class="dots"></span></div>');
         msgs.scrollTop=msgs.scrollHeight;
-        fetch('/api/chat',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({message:msg})})
+        fetch('/api/chat',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({message:msg,city:'{{ city }}'})})
         .then(function(r){return r.json()})
         .then(function(d){
             var el=document.getElementById('chatLoading');
@@ -194,7 +202,7 @@
             t.appendChild(document.createTextNode('\ud83d\udccd New report: '));
             var b=document.createElement('strong');b.textContent=d.category;t.appendChild(b);
             t.appendChild(document.createTextNode(' near '+d.neighborhood));
-            var a=document.createElement('a');a.href='/dashboard';a.textContent='Refresh map';t.appendChild(a);
+            var a=document.createElement('a');a.href='/dashboard?city={{ city }}';a.textContent='Refresh map';t.appendChild(a);
             tc.appendChild(t);
             setTimeout(function(){t.classList.add('fade-out');setTimeout(function(){t.remove()},400)},5000);
         };
