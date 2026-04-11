@@ -28,7 +28,7 @@ from io import BytesIO as _BytesIO
 from PIL import Image
 
 from app.database import create_tables, get_db
-from app.gemini import classify_image, FALLBACK
+from app.classifier import classify_image, FALLBACK
 from app.models import Report
 from app.news import fetch_news
 
@@ -606,7 +606,7 @@ async def create_report(
     filepath = UPLOAD_DIR / filename
     filepath.write_bytes(content)
 
-    # 9. Classify image via Gemini (falls back automatically on any failure)
+    # 9. Classify image via AI (falls back automatically on any failure)
     result = await classify_image(content)
 
     # 9b. Merge citizen voice description if provided

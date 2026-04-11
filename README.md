@@ -99,7 +99,7 @@ citypulse/
 │   ├── main.py              # FastAPI routes, clustering, health score, chat, briefing, SSE
 │   ├── database.py          # SQLAlchemy engine and session
 │   ├── models.py            # Report model with constraints
-│   ├── gemini.py            # Groq Llama 4 Scout vision client + fallback logic
+│   ├── classifier.py            # AI classification client (Groq Llama 4 Scout) + fallback logic
 │   ├── news.py              # RSS news fetcher with city filtering + Groq translation
 │   ├── templates/
 │   │   ├── submit.html      # Mobile-first report submission (photo, GPS, voice, map picker)
@@ -119,7 +119,7 @@ citypulse/
 │   ├── conftest.py          # Fixtures: in-memory DB, test client, mocks
 │   ├── test_routes.py       # Basic route tests
 │   ├── test_submit.py       # Report submission + validation tests (18 tests)
-│   ├── test_gemini.py       # AI parsing + fallback tests
+│   ├── test_classifier.py       # AI classification parsing + fallback tests
 │   ├── test_dashboard.py    # Dashboard rendering tests
 │   ├── test_clustering.py   # DBSCAN clustering tests
 │   └── test_health_score.py # Health score + trend + accessibility tests
@@ -259,10 +259,25 @@ pytest tests/ -v
 
 ## 📸 Screenshots
 
-> _Seed the database with `python seed_data/seed.py` and visit the dashboard to see CityPulse in action._
+### Dashboard — Interactive map with risk zones, heatmap, and stats
+![Dashboard](docs/dashboard.png)
+
+### AI Chat Assistant — Actionable insights from report data and local news
+![Chat](docs/chat.png)
+
+### Submit Report — Photo upload, GPS, voice description, privacy badge
+![Submit](docs/submit.png)
+
+### AI Classification Result — Automatic category, severity, and department routing
+![Submit Result](docs/submit-result.png)
+
+### AI City Council Briefing — Auto-generated memo for city officials
+![Briefing](docs/briefing.png)
 
 ---
 
 ## 📄 License
 
-Built for [AlgoFest Hackathon 2026](https://algofest.dev) — Smart Cities & IoT track.
+MIT License — see [LICENSE](LICENSE).
+
+Built for [AlgoFest Hackathon 2026](https://algofest-hackathon26.devpost.com/) — Smart Cities & IoT track.

@@ -85,8 +85,8 @@ def test_client(db_session):
 
 
 @pytest.fixture
-def mock_gemini_success():
-    """Mock Gemini client returning valid classification."""
+def mock_ai_success():
+    """Mock AI client returning valid classification."""
     mock_client = MagicMock()
     mock_response = MagicMock()
     mock_response.text = '{"category":"pothole","severity":"high","department":"roads","description":"Large pothole"}'
@@ -95,8 +95,8 @@ def mock_gemini_success():
 
 
 @pytest.fixture
-def mock_gemini_timeout():
-    """Mock Gemini client that raises a timeout."""
+def mock_ai_timeout():
+    """Mock AI client that raises a timeout."""
     mock_client = MagicMock()
     mock_client.models.generate_content.side_effect = TimeoutError("API timeout")
     return mock_client

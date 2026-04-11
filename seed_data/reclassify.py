@@ -1,4 +1,4 @@
-"""Re-classify existing seed reports using Gemini AI. Reads images from disk, no re-downloading."""
+"""Re-classify existing seed reports using AI. Reads. Reads images from disk, no re-downloading."""
 
 import sys
 import time
@@ -11,7 +11,7 @@ load_dotenv(Path(__file__).resolve().parent.parent / ".env")
 
 from app.database import SessionLocal, create_tables
 from app.models import Report
-from app.gemini import classify_image
+from app.classifier import classify_image
 
 BASE_DIR = Path(__file__).resolve().parent.parent / "app"
 
@@ -36,7 +36,7 @@ def main():
 
             if result["category"] == "unclassified":
                 failed += 1
-                print(f"  [{i+1}/{len(reports)}] SKIP — Gemini unavailable")
+                print(f"  [{i+1}/{len(reports)}] SKIP — AI unavailable")
                 time.sleep(4)
                 continue
 

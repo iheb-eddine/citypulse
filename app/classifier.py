@@ -42,7 +42,7 @@ def _detect_mime(data: bytes) -> str:
     return "application/octet-stream"
 
 
-def parse_gemini_response(text: str) -> dict:
+def parse_ai_response(text: str) -> dict:
     """Parse and validate AI response text. Returns FALLBACK on any issue."""
     try:
         cleaned = text.strip()
@@ -93,6 +93,6 @@ async def classify_image(image_bytes: bytes) -> dict:
             )
         r.raise_for_status()
         text = r.json()["choices"][0]["message"]["content"]
-        return parse_gemini_response(text)
+        return parse_ai_response(text)
     except Exception:
         return dict(FALLBACK)

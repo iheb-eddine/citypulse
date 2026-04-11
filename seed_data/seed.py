@@ -16,7 +16,7 @@ load_dotenv(Path(__file__).resolve().parent.parent / ".env")
 
 from app.database import SessionLocal, create_tables
 from app.models import Report
-from app.gemini import classify_image
+from app.classifier import classify_image
 
 random.seed(42)
 
@@ -207,7 +207,7 @@ def main():
 
             fname = save_image(img_data)
 
-            # Classify image with Gemini AI
+            # Classify image with AI
             classification = classify_image(img_data)
             print(f"\r  [{i+1}/50] → {classification['category']} ({classification['severity']})", end="", flush=True)
             time.sleep(2)  # Rate limit: free tier ~30 req/min

@@ -1,4 +1,4 @@
-"""Tests for POST /api/reports — Step 3 (no Gemini, fallback values only)."""
+"""Tests for POST /api/reports — Step 3 (fallback values only)."""
 
 import re
 from io import BytesIO
@@ -10,13 +10,13 @@ from tests.conftest import JPEG_BYTES, PNG_BYTES
 
 
 @pytest.fixture(autouse=True)
-def _mock_gemini(monkeypatch):
-    """Mock Gemini API for all tests by default."""
+def _mock_ai(monkeypatch):
+    """Mock AI API for all tests by default."""
     from unittest.mock import MagicMock
     mock_resp = MagicMock()
     mock_resp.status_code = 500
     mock_resp.raise_for_status.side_effect = Exception("mocked")
-    monkeypatch.setattr("app.gemini.httpx.post", MagicMock(side_effect=Exception("mocked")))
+    monkeypatch.setattr("app.classifier.httpx.post", MagicMock(side_effect=Exception("mocked")))
 
 
 @pytest.fixture(autouse=True)
@@ -152,39 +152,39 @@ def test_submit_report_persisted_in_db(test_client, db_session):
     assert report.category == "unclassified"
 
 
-# --- Gemini integration tests (Step 4) ---
+# --- AI integration tests (Step 4) ---
 
-def _mock_gemini_response(monkeypatch, text=None, side_effect=None):
-    """Patch app.gemini.httpx.post to return a mock with given response text or side_effect."""
+def _mock_ai_response(monkeypatch, text=None, side_effect=None):
+    """Patch app.classifier.httpx.post to return a mock with given response text or side_effect."""
     from unittest.mock import MagicMock
     mock_resp = MagicMock()
     if side_effect:
-        monkeypatch.setattr("app.gemini.httpx.post", MagicMock(side_effect=side_effect))
+        monkeypatch.setattr("app.classifier.httpx.post", MagicMock(side_effect=side_effect))
     else:
         mock_resp.status_code = 200
         mock_resp.raise_for_status = MagicMock()
         mock_resp.json.return_value = {
             "candidates": [{"content": {"parts": [{"text": text}]}}]
         }
-        monkeypatch.setattr("app.gemini.httpx.post", MagicMock(return_value=mock_resp))
+        monkeypatch.setattr("app.classifier.httpx.post", MagicMock(return_value=mock_resp))
 
 
-def test_submit_gemini_fallback_on_timeout(test_client, monkeypatch, tmp_path):
-    _mock_gemini_response(monkeypatch, side_effect=TimeoutError("API timeout"))
+def test_submit_ai_fallback_on_timeout(test_client, monkeypatch, tmp_path):
+    _mock_ai_response(monkeypatch, side_effect=TimeoutError("API timeout"))
     r = _post(test_client, files=_jpeg_file(), data=_valid_data())
     assert r.status_code == 201
     assert r.json()["category"] == "unclassified"
 
 
-def test_submit_gemini_fallback_on_invalid_json(test_client, monkeypatch, tmp_path):
-    _mock_gemini_response(monkeypatch, text="I cannot analyze this image")
+def test_submit_ai_fallback_on_invalid_json(test_client, monkeypatch, tmp_path):
+    _mock_ai_response(monkeypatch, text="I cannot analyze this image")
     r = _post(test_client, files=_jpeg_file(), data=_valid_data())
     assert r.status_code == 201
     assert r.json()["category"] == "unclassified"
 
 
-def test_submit_gemini_fallback_on_invalid_category(test_client, monkeypatch, tmp_path):
-    _mock_gemini_response(
+def test_submit_ai_fallback_on_invalid_category(test_client, monkeypatch, tmp_path):
+    _mock_ai_response(
         monkeypatch,
         text='{"category":"earthquake","severity":"high","department":"roads","description":"Shaking"}',
     )
@@ -196,8 +196,8 @@ def test_submit_gemini_fallback_on_invalid_category(test_client, monkeypatch, tm
     assert body["department"] == "general"
 
 
-def test_submit_gemini_fallback_on_missing_field(test_client, monkeypatch, tmp_path):
-    _mock_gemini_response(
+def test_submit_ai_fallback_on_missing_field(test_client, monkeypatch, tmp_path):
+    _mock_ai_response(
         monkeypatch,
         text='{"category":"pothole","severity":"high"}',
     )

@@ -1,44 +1,44 @@
-"""Unit tests for app/gemini.py — parse and classify functions."""
+"""Unit tests for app/classifier.py — parse and classify functions."""
 
 import os
 from unittest.mock import patch, MagicMock
 
-from app.gemini import FALLBACK, parse_gemini_response, classify_image
+from app.classifier import FALLBACK, parse_ai_response, classify_image
 
 
-def test_parse_valid_gemini_response():
+def test_parse_valid_ai_response():
     text = '{"category":"pothole","severity":"high","department":"roads","description":"Large pothole"}'
-    result = parse_gemini_response(text)
+    result = parse_ai_response(text)
     assert result == {"category": "pothole", "severity": "high", "department": "roads", "description": "Large pothole"}
 
 
 def test_parse_invalid_json_returns_fallback():
-    assert parse_gemini_response("not json at all") == FALLBACK
+    assert parse_ai_response("not json at all") == FALLBACK
 
 
 def test_parse_missing_key_returns_fallback():
     text = '{"category":"pothole","severity":"high"}'
-    assert parse_gemini_response(text) == FALLBACK
+    assert parse_ai_response(text) == FALLBACK
 
 
 def test_parse_invalid_enum_returns_fallback():
     text = '{"category":"earthquake","severity":"high","department":"roads","description":"test"}'
-    assert parse_gemini_response(text) == FALLBACK
+    assert parse_ai_response(text) == FALLBACK
 
 
 def test_parse_empty_description_returns_fallback():
     text = '{"category":"pothole","severity":"high","department":"roads","description":""}'
-    assert parse_gemini_response(text) == FALLBACK
+    assert parse_ai_response(text) == FALLBACK
 
 
-def test_parse_gemini_markdown_wrapped_json():
+def test_parse_markdown_wrapped_json():
     text = '```json\n{"category":"graffiti","severity":"low","department":"sanitation","description":"Wall tagged"}\n```'
-    result = parse_gemini_response(text)
+    result = parse_ai_response(text)
     assert result["category"] == "graffiti"
     assert result["description"] == "Wall tagged"
 
 
-@patch("app.gemini.httpx.AsyncClient")
+@patch("app.classifier.httpx.AsyncClient")
 def test_groq_called_as_primary(mock_client_cls):
     import asyncio
     mock_response = MagicMock()
