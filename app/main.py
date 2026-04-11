@@ -2,7 +2,7 @@
 
 import asyncio
 import json as _json
-from collections import Counter, defaultdict
+from collections import Counter
 from contextlib import asynccontextmanager
 from datetime import datetime, timedelta
 from pathlib import Path
@@ -10,7 +10,7 @@ from typing import Optional
 from uuid import uuid4
 
 import folium
-from folium.plugins import HeatMapWithTime
+from folium.plugins import HeatMap, Fullscreen
 import numpy as np
 from fastapi import Depends, FastAPI, File, Form, Request, UploadFile
 from fastapi.responses import HTMLResponse, JSONResponse, StreamingResponse
@@ -37,6 +37,14 @@ load_dotenv()
 SEVERITY_COLORS = {"low": "green", "medium": "orange", "high": "orange", "critical": "red"}
 SEVERITY_WEIGHTS = {"low": 1, "medium": 2, "high": 3, "critical": 5}
 ACCESSIBILITY_WEIGHTS = {"pothole": 3, "streetlight": 2, "flooding": 2, "sign": 1.5, "graffiti": 1, "dumping": 1.5, "other": 1}
+
+
+_SEVERITY_BASE_DAYS = {"low": 3, "medium": 5, "high": 7, "critical": 2}
+_CATEGORY_EXTRA_DAYS = {"pothole": 2, "streetlight": 1}
+
+
+def estimate_resolution_days(category: str, severity: str) -> int:
+    return _SEVERITY_BASE_DAYS.get(severity, 5) + _CATEGORY_EXTRA_DAYS.get(category, 0)
 
 
 def compute_health_score(reports: list) -> float:
@@ -151,6 +159,50 @@ def neighborhood_for_coords(lat: float, lng: float, city_key: Optional[str] = No
     return "Unknown area"
 
 
+def compute_risk_scores(reports: list, city_key: Optional[str] = None) -> list:
+    """Compute per-neighborhood risk scores (0-100) from report data."""
+    if not reports:
+        return []
+    _, cfg = get_city(city_key)
+    now = datetime.now()
+    week_ago = now - timedelta(days=7)
+    two_weeks_ago = now - timedelta(days=14)
+
+    # Group reports by neighborhood
+    nh_reports: dict[str, list] = {}
+    for nb in cfg["neighborhoods"]:
+        lat_min, lat_max, lng_min, lng_max, name = nb
+        matched = [r for r in reports if lat_min <= r.latitude <= lat_max and lng_min <= r.longitude <= lng_max]
+        if matched:
+            nh_reports[name] = matched
+
+    if not nh_reports:
+        return []
+
+    max_count = max(len(v) for v in nh_reports.values())
+    results = []
+    for nb in cfg["neighborhoods"]:
+        lat_min, lat_max, lng_min, lng_max, name = nb
+        reps = nh_reports.get(name)
+        if not reps:
+            continue
+        count = len(reps)
+        avg_sev = sum(SEVERITY_WEIGHTS.get(r.severity, 1) for r in reps) / count
+        unresolved = sum(1 for r in reps if r.status != "resolved") / count
+        this_week = sum(1 for r in reps if r.created_at >= week_ago)
+        last_week = sum(1 for r in reps if two_weeks_ago <= r.created_at < week_ago)
+        trend_f = 1.0 if this_week > last_week else (0.5 if this_week == last_week else 0.0)
+        risk = ((count / max_count) * 0.4 + (avg_sev / 5) * 0.3 + unresolved * 0.2 + trend_f * 0.1) * 100
+        risk = min(100, max(0, round(risk, 1)))
+        color = "#2e7d32" if risk <= 33 else ("#f9a825" if risk <= 66 else "#c62828")
+        lat_c = (lat_min + lat_max) / 2
+        lng_c = (lng_min + lng_max) / 2
+        grade = "A" if risk <= 20 else "B" if risk <= 40 else "C" if risk <= 60 else "D" if risk <= 80 else "F"
+        results.append({"name": name, "lat": lat_c, "lng": lng_c, "risk_score": risk, "color": color, "grade": grade})
+    results.sort(key=lambda x: x["risk_score"], reverse=True)
+    return results
+
+
 def compute_hotspots(reports: list, city_key: Optional[str] = None) -> list:
     clusters = Counter(r.cluster_id for r in reports if r.cluster_id is not None)
     hotspots = []
@@ -163,9 +215,15 @@ def compute_hotspots(reports: list, city_key: Optional[str] = None) -> list:
     return hotspots
 
 
+_last_cluster_count: int = -1
+
+
 def run_clustering(reports: list[Report], db: Session) -> None:
     """Run DBSCAN on report coordinates and update cluster_id in DB."""
+    global _last_cluster_count
     if not reports:
+        return
+    if len(reports) == _last_cluster_count:
         return
     from sklearn.cluster import DBSCAN
     coords = np.array([[r.latitude, r.longitude] for r in reports])
@@ -173,6 +231,7 @@ def run_clustering(reports: list[Report], db: Session) -> None:
     for report, label in zip(reports, labels):
         report.cluster_id = None if label == -1 else int(label)
     db.commit()
+    _last_cluster_count = len(reports)
 
 BASE_DIR = Path(__file__).resolve().parent
 UPLOAD_DIR = BASE_DIR / "static" / "uploads"
@@ -309,6 +368,7 @@ def _build_dashboard_data(db: Session, category: Optional[str] = None, severity:
     categories = compute_category_breakdown(reports)
     severities = compute_severity_breakdown(reports)
     hotspots = compute_hotspots(reports, city_key)
+    risk_scores = compute_risk_scores(reports, city_key)
     total = len(reports)
     statuses = dict(Counter(r.status for r in reports))
     accessibility_score = compute_accessibility_score(reports)
@@ -324,7 +384,7 @@ def _build_dashboard_data(db: Session, category: Optional[str] = None, severity:
     return reports, {
         "health_score": health_score, "total_reports": total,
         "categories": categories, "severities": severities,
-        "hotspots": hotspots, "trend_text": trend_text, "trend": trend,
+        "hotspots": hotspots, "risk_scores": risk_scores, "trend_text": trend_text, "trend": trend,
         "statuses": statuses,
         "accessibility_score": accessibility_score,
         "top_accessibility_categories": top_accessibility_categories,
@@ -343,6 +403,7 @@ async def dashboard(
     city_cfg = stats["city_cfg"]
     city_key = stats["city_key"]
     m = folium.Map(location=[city_cfg["lat"], city_cfg["lng"]], zoom_start=city_cfg["zoom"])
+    Fullscreen().add_to(m)
     SEV_BADGE = {"low": "#43a047", "medium": "#fb8c00", "high": "#f4511e", "critical": "#c62828"}
     STATUS_LABEL = {"open": "Open", "in_progress": "In Progress", "resolved": "Resolved"}
     bounds = []
@@ -369,6 +430,7 @@ async def dashboard(
             f'<span style="display:inline-block;background:{sev_color};color:#fff;padding:1px 8px;border-radius:10px;font-size:11px;font-weight:600;text-transform:uppercase">{r.severity}</span>'
             f'<div style="color:#5f6b7a;font-size:11px;margin-top:6px">{r.department}<br>{r.created_at}</div>'
             f'<div style="font-size:11px;margin-top:4px;font-weight:600">Status: {status_label}</div>'
+            f'<div style="color:#1a73e8;font-size:11px;margin-top:4px">Estimated resolution: ~{estimate_resolution_days(r.category, r.severity)} days</div>'
             f'<div style="margin-top:4px">{status_btns}</div>'
             f'<button id="confirm-btn-{r.id}" onclick="(function(btn){{'
             f'btn.disabled=true;'
@@ -395,13 +457,18 @@ async def dashboard(
         bounds.append([r.latitude, r.longitude])
     marker_group.add_to(m)
     if reports:
-        by_day = defaultdict(list)
-        for r in reports:
-            day = r.created_at.date().isoformat()
-            by_day[day].append([r.latitude, r.longitude, SEVERITY_WEIGHTS.get(r.severity, 1) / 5])
-        index = sorted(by_day)
-        heat_data = [by_day[d] for d in index]
-        HeatMapWithTime(heat_data, index=index, name="Heatmap", auto_play=False).add_to(m)
+        heat_data = [[r.latitude, r.longitude, SEVERITY_WEIGHTS.get(r.severity, 1) / 5] for r in reports]
+        HeatMap(heat_data, name="Heatmap", radius=25, min_opacity=0.4, max_opacity=0.8).add_to(m)
+    # Risk zone overlays
+    if stats["risk_scores"]:
+        risk_group = folium.FeatureGroup(name="Risk Zones")
+        for rs in stats["risk_scores"]:
+            folium.CircleMarker(
+                location=[rs["lat"], rs["lng"]], radius=35, color=rs["color"],
+                fill=True, fill_color=rs["color"], fill_opacity=0.3, weight=3,
+                tooltip=f"{rs['name']}: {rs.get('grade','?')} — Risk {rs['risk_score']}",
+            ).add_to(risk_group)
+        risk_group.add_to(m)
     folium.LayerControl().add_to(m)
     if bounds:
         m.fit_bounds(bounds, padding=[20, 20])
@@ -540,7 +607,7 @@ async def create_report(
     filepath.write_bytes(content)
 
     # 9. Classify image via Gemini (falls back automatically on any failure)
-    result = classify_image(content)
+    result = await classify_image(content)
 
     # 9b. Merge citizen voice description if provided
     if description_text and description_text.strip():
@@ -570,22 +637,34 @@ async def create_report(
         "city": report.city,
     })
 
+    # Duplicate detection: nearby similar reports
+    cutoff = datetime.now() - timedelta(days=7)
+    nearby = db.query(Report).filter(
+        Report.id != report.id,
+        Report.category == report.category,
+        Report.latitude.between(report.latitude - 0.002, report.latitude + 0.002),
+        Report.longitude.between(report.longitude - 0.002, report.longitude + 0.002),
+        Report.created_at >= cutoff,
+    ).all()
+
+    resp = {
+        "id": report.id,
+        "photo_path": report.photo_path,
+        "latitude": report.latitude,
+        "longitude": report.longitude,
+        "category": report.category,
+        "severity": report.severity,
+        "department": report.department,
+        "description": report.description,
+        "status": report.status,
+        "created_at": str(report.created_at),
+        "estimated_resolution_days": estimate_resolution_days(report.category, report.severity),
+    }
+    if nearby:
+        resp["nearby_similar"] = [{"id": r.id, "description": r.description} for r in nearby]
+
     # 11. Return 201
-    return JSONResponse(
-        status_code=201,
-        content={
-            "id": report.id,
-            "photo_path": report.photo_path,
-            "latitude": report.latitude,
-            "longitude": report.longitude,
-            "category": report.category,
-            "severity": report.severity,
-            "department": report.department,
-            "description": report.description,
-            "status": report.status,
-            "created_at": str(report.created_at),
-        },
-    )
+    return JSONResponse(status_code=201, content=resp)
 
 
 SEVERITY_ESCALATION = {"low": "medium", "medium": "high", "high": "critical", "critical": "critical"}
@@ -703,7 +782,7 @@ async def chat(request: Request, db: Session = Depends(get_db)):
 
     try:
         report_stats = _build_report_stats(db, city=city_key)
-        news = fetch_news(city_key)
+        news = await fetch_news(city_key)
         news_text = "\n".join(f"- {n['title']}" for n in news) if news else "No recent news available."
 
         system_prompt = CHAT_SYSTEM_PROMPT.format(
@@ -714,19 +793,20 @@ async def chat(request: Request, db: Session = Depends(get_db)):
         if not api_key:
             return {"response": "I'm having trouble right now. Please try again."}
 
-        r = httpx.post(
-            "https://api.groq.com/openai/v1/chat/completions",
-            json={
-                "model": "llama-3.1-8b-instant",
-                "messages": [
-                    {"role": "system", "content": system_prompt},
-                    {"role": "user", "content": message},
-                ],
-                "max_tokens": 200,
-            },
-            headers={"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"},
-            timeout=10,
-        )
+        async with httpx.AsyncClient() as client:
+            r = await client.post(
+                "https://api.groq.com/openai/v1/chat/completions",
+                json={
+                    "model": "llama-3.1-8b-instant",
+                    "messages": [
+                        {"role": "system", "content": system_prompt},
+                        {"role": "user", "content": message},
+                    ],
+                    "max_tokens": 200,
+                },
+                headers={"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"},
+                timeout=10,
+            )
         r.raise_for_status()
         answer = r.json()["choices"][0]["message"]["content"]
         return {"response": answer}
@@ -793,7 +873,7 @@ def _fallback_briefing(stats: dict) -> str:
     )
 
 
-def _generate_briefing(db: Session, city: Optional[str] = None) -> dict:
+async def _generate_briefing(db: Session, city: Optional[str] = None) -> dict:
     """Generate briefing dict with 'briefing' and 'generated_at' keys."""
     data_str, stats, _ = _build_briefing_data(db, city=city)
     city_name = stats["city_cfg"]["name"]
@@ -807,19 +887,20 @@ def _generate_briefing(db: Session, city: Optional[str] = None) -> dict:
         if not api_key:
             return {"briefing": _fallback_briefing(stats), "generated_at": generated_at}
 
-        r = httpx.post(
-            "https://api.groq.com/openai/v1/chat/completions",
-            json={
-                "model": "llama-3.1-8b-instant",
-                "messages": [
-                    {"role": "system", "content": BRIEFING_PROMPT.format(city=city_name, data=data_str)},
-                    {"role": "user", "content": "Generate the city council briefing."},
-                ],
-                "max_tokens": 1024,
-            },
-            headers={"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"},
-            timeout=15,
-        )
+        async with httpx.AsyncClient() as client:
+            r = await client.post(
+                "https://api.groq.com/openai/v1/chat/completions",
+                json={
+                    "model": "llama-3.1-8b-instant",
+                    "messages": [
+                        {"role": "system", "content": BRIEFING_PROMPT.format(city=city_name, data=data_str)},
+                        {"role": "user", "content": "Generate the city council briefing."},
+                    ],
+                    "max_tokens": 1024,
+                },
+                headers={"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"},
+                timeout=15,
+            )
         r.raise_for_status()
         text = r.json()["choices"][0]["message"]["content"]
         return {"briefing": text, "generated_at": generated_at}
@@ -829,13 +910,13 @@ def _generate_briefing(db: Session, city: Optional[str] = None) -> dict:
 
 @app.get("/api/briefing")
 async def api_briefing(db: Session = Depends(get_db), city: Optional[str] = None):
-    return _generate_briefing(db, city=city)
+    return await _generate_briefing(db, city=city)
 
 
 @app.get("/briefing")
 async def briefing_page(request: Request, db: Session = Depends(get_db), city: Optional[str] = None):
     city_key, _ = get_city(city)
-    data = _generate_briefing(db, city=city)
+    data = await _generate_briefing(db, city=city)
     data["city"] = city_key
     data["cities"] = CITIES
     return templates.TemplateResponse(request, "briefing.html", data)

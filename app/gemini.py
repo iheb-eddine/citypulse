@@ -69,7 +69,7 @@ def parse_gemini_response(text: str) -> dict:
         return dict(FALLBACK)
 
 
-def classify_image(image_bytes: bytes) -> dict:
+async def classify_image(image_bytes: bytes) -> dict:
     """Classify image using Groq Llama 4 Scout. Returns FALLBACK on any failure."""
     try:
         api_key = os.environ.get("GROQ_API_KEY", "")
@@ -77,19 +77,20 @@ def classify_image(image_bytes: bytes) -> dict:
             return dict(FALLBACK)
         mime = _detect_mime(image_bytes)
         b64 = base64.b64encode(image_bytes).decode()
-        r = httpx.post(
-            "https://api.groq.com/openai/v1/chat/completions",
-            json={
-                "model": "meta-llama/llama-4-scout-17b-16e-instruct",
-                "messages": [{"role": "user", "content": [
-                    {"type": "image_url", "image_url": {"url": f"data:{mime};base64,{b64}"}},
-                    {"type": "text", "text": PROMPT},
-                ]}],
-                "max_tokens": 200,
-            },
-            headers={"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"},
-            timeout=30,
-        )
+        async with httpx.AsyncClient() as client:
+            r = await client.post(
+                "https://api.groq.com/openai/v1/chat/completions",
+                json={
+                    "model": "meta-llama/llama-4-scout-17b-16e-instruct",
+                    "messages": [{"role": "user", "content": [
+                        {"type": "image_url", "image_url": {"url": f"data:{mime};base64,{b64}"}},
+                        {"type": "text", "text": PROMPT},
+                    ]}],
+                    "max_tokens": 200,
+                },
+                headers={"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"},
+                timeout=30,
+            )
         r.raise_for_status()
         text = r.json()["choices"][0]["message"]["content"]
         return parse_gemini_response(text)

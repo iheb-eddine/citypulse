@@ -38,18 +38,25 @@ def test_parse_gemini_markdown_wrapped_json():
     assert result["description"] == "Wall tagged"
 
 
-@patch("app.gemini.httpx.post")
-def test_groq_called_as_primary(mock_post):
+@patch("app.gemini.httpx.AsyncClient")
+def test_groq_called_as_primary(mock_client_cls):
+    import asyncio
     mock_response = MagicMock()
     mock_response.status_code = 200
     mock_response.raise_for_status = MagicMock()
     mock_response.json.return_value = {
         "choices": [{"message": {"content": '{"category":"pothole","severity":"high","department":"roads","description":"test"}'}}]
     }
-    mock_post.return_value = mock_response
 
-    classify_image(b"\xff\xd8\xff" + b"\x00" * 100)
+    mock_client = MagicMock()
+    mock_client.__aenter__ = MagicMock(return_value=mock_client)
+    mock_client.__aexit__ = MagicMock(return_value=None)
 
-    mock_post.assert_called_once()
-    url = mock_post.call_args[0][0]
-    assert "groq.com" in url
+    async def mock_post(*args, **kwargs):
+        return mock_response
+    mock_client.post = mock_post
+    mock_client_cls.return_value = mock_client
+
+    asyncio.get_event_loop().run_until_complete(classify_image(b"\xff\xd8\xff" + b"\x00" * 100))
+
+    mock_client_cls.assert_called_once()

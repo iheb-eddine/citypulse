@@ -49,18 +49,18 @@
         </div>
         <div id="stats-panel">
             <div class="health-score {% if health_score >= 70 %}health-green{% elif health_score >= 40 %}health-amber{% else %}health-red{% endif %}">
-                <div class="label">City Health Score</div>
+                <div class="label" title="Overall urban wellbeing score. 100 = no issues, 0 = critical. Based on report count and severity.">City Health Score ℹ️</div>
                 <div class="score">{{ health_score | round(1) }}</div>
                 <div class="max">/ 100</div>
             </div>
             <div class="health-score {% if accessibility_score >= 70 %}health-green{% elif accessibility_score >= 40 %}health-amber{% else %}health-red{% endif %}" style="margin-top:12px">
-                <div class="label">Accessibility Impact Score</div>
+                <div class="label" title="How much current issues affect people with disabilities. Potholes (wheelchair), streetlights (visually impaired), flooding (mobility aids) are weighted higher.">Accessibility Impact Score ℹ️</div>
                 <div class="score">{{ accessibility_score | round(1) }}</div>
                 <div class="max">/ 100</div>
             </div>
             {% if top_accessibility_categories %}
             <div class="stat-section">
-                <h3>Top Accessibility Impact</h3>
+                <h3 title="Categories weighted by impact on disabled citizens">Top Accessibility Impact ℹ️</h3>
                 <ol class="hotspot-list">
                     {% for cat in top_accessibility_categories[:3] %}
                     <li>{{ cat | capitalize }}</li>
@@ -69,11 +69,11 @@
             </div>
             {% endif %}
             <div class="stat-section">
-                <h3>Total Reports</h3>
+                <h3 title="Total citizen-submitted urban issue reports">Total Reports</h3>
                 <p>{{ total_reports }}</p>
             </div>
             <div class="stat-section">
-                <h3>Status</h3>
+                <h3 title="Report lifecycle: open → in progress → resolved">Status</h3>
                 <p>{{ statuses.get('open', 0) }} open, {{ statuses.get('in_progress', 0) }} in progress, {{ statuses.get('resolved', 0) }} resolved</p>
             </div>
             <div class="stat-section">
@@ -97,7 +97,7 @@
                 {% endfor %}
             </div>
             <div class="stat-section">
-                <h3>Top Hotspots</h3>
+                <h3 title="Areas with highest concentration of reports (DBSCAN clustering)">Top Hotspots ℹ️</h3>
                 {% if hotspots %}
                 <ol class="hotspot-list">
                     {% for h in hotspots %}
@@ -108,8 +108,18 @@
                 <p>No clusters detected</p>
                 {% endif %}
             </div>
+            {% if risk_scores %}
             <div class="stat-section">
-                <h3>Trend</h3>
+                <h3 title="Neighborhood risk based on report density, severity, resolution rate, and trend">Predicted Risk ℹ️</h3>
+                <ol class="hotspot-list">
+                    {% for rs in risk_scores %}
+                    <li><span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:{{ rs.color }};margin-right:6px"></span>{{ rs.name }}: {{ rs.grade }} ({{ rs.risk_score }})</li>
+                    {% endfor %}
+                </ol>
+            </div>
+            {% endif %}
+            <div class="stat-section">
+                <h3 title="Reports this week vs last week">Trend</h3>
                 <div class="trend">{{ trend_text }}</div>
             </div>
         </div>
@@ -145,7 +155,6 @@
             var selects = form.querySelectorAll('select');
             selects.forEach(function(s) { if (!s.value) s.removeAttribute('name'); });
         });
-        // Manual refresh only — auto-refresh removed to preserve map state
     })();
     function toggleChat(){
         var p=document.getElementById('chatPanel'),f=document.getElementById('chatFab');

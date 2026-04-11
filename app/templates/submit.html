@@ -29,7 +29,7 @@
         .loc-btn{display:inline-flex;align-items:center;gap:6px;background:#00897b;color:#fff;border:none;border-radius:8px;padding:10px 16px;font-size:0.9rem;cursor:pointer;margin-bottom:12px}
         .loc-btn:hover{background:#00796b}
         .loc-btn:disabled{opacity:.5;cursor:not-allowed}
-        input[type="text"]{width:100%;padding:10px 12px;border:1px solid var(--border);border-radius:8px;font-size:1rem;margin-bottom:10px}
+        input[type="text"]{width:100%;padding:10px 12px;border:1px solid var(--border);border-radius:8px;font-size:1rem;margin-bottom:10px;background:var(--card);color:var(--text)}
         input[type="text"]:focus{outline:none;border-color:#1a73e8;box-shadow:0 0 0 2px rgba(26,115,232,0.2)}
         .row{display:flex;gap:10px}
         .row>div{flex:1}
@@ -104,7 +104,7 @@
         <div class="card">
             <label for="description_text">Description</label>
             <button type="button" class="loc-btn" id="voiceBtn" style="display:none;background:#e53935" aria-label="Describe by voice">🎙️ Describe by voice</button>
-            <textarea id="description_text" name="description_text" rows="3" placeholder="Describe the issue…" style="width:100%;padding:10px 12px;border:1px solid var(--border);border-radius:8px;font-size:1rem;resize:vertical;font-family:inherit"></textarea>
+            <textarea id="description_text" name="description_text" rows="3" placeholder="Describe the issue…" style="width:100%;padding:10px 12px;border:1px solid var(--border);border-radius:8px;font-size:1rem;resize:vertical;font-family:inherit;background:var(--card);color:var(--text)"></textarea>
         </div>
 
         <button type="submit" class="submit-btn" id="submitBtn">Submit Report</button>
@@ -202,7 +202,9 @@
             const res=await fetch('/api/reports',{method:'POST',body:fd});
             const data=await res.json();
             if(res.ok){
-                result.innerHTML='<div class="msg success"><strong>Report submitted!</strong><dl class="result-grid"><dt>Category</dt><dd>'+esc(data.category)+'</dd><dt>Severity</dt><dd>'+esc(data.severity)+'</dd><dt>Department</dt><dd>'+esc(data.department)+'</dd><dt>Description</dt><dd>'+esc(data.description)+'</dd></dl></div>';
+                let html='<div class="msg success"><strong>Report submitted!</strong><dl class="result-grid"><dt>Category</dt><dd>'+esc(data.category)+'</dd><dt>Severity</dt><dd>'+esc(data.severity)+'</dd><dt>Department</dt><dd>'+esc(data.department)+'</dd><dt>Description</dt><dd>'+esc(data.description)+'</dd></dl></div>';
+                if(data.nearby_similar&&data.nearby_similar.length){html+='<div class="msg" style="background:#fff3e0;border:1px solid #ffb74d;color:#e65100;margin-top:8px">⚠️ Similar report nearby — <a href="/?city='+esc(document.getElementById("cityField").value)+'" style="color:#e65100;font-weight:600">consider confirming it instead</a></div>'}
+                result.innerHTML=html;
                 form.reset();preview.style.display='none';uploadPrompt.style.display=''
             }else{
                 result.innerHTML='<div class="msg error">'+esc(data.error.message)+'</div>'

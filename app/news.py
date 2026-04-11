@@ -29,26 +29,27 @@ def _is_relevant(title: str, desc: str, keywords: set) -> bool:
     return any(kw in text for kw in keywords)
 
 
-def _translate_headlines(headlines: list[dict]) -> list[dict]:
+async def _translate_headlines(headlines: list[dict]) -> list[dict]:
     """Translate German headlines to English via Groq."""
     api_key = os.environ.get("GROQ_API_KEY", "")
     if not api_key or not headlines:
         return headlines
     titles = "\n".join(f"- {h['title']}" for h in headlines)
     try:
-        r = httpx.post(
-            "https://api.groq.com/openai/v1/chat/completions",
-            json={
-                "model": "llama-3.1-8b-instant",
-                "messages": [
-                    {"role": "system", "content": "Translate each German headline to English. Keep the same format (one per line starting with -). Only output the translated lines, nothing else."},
-                    {"role": "user", "content": titles},
-                ],
-                "max_tokens": 300,
-            },
-            headers={"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"},
-            timeout=8,
-        )
+        async with httpx.AsyncClient() as client:
+            r = await client.post(
+                "https://api.groq.com/openai/v1/chat/completions",
+                json={
+                    "model": "llama-3.1-8b-instant",
+                    "messages": [
+                        {"role": "system", "content": "Translate each German headline to English. Keep the same format (one per line starting with -). Only output the translated lines, nothing else."},
+                        {"role": "user", "content": titles},
+                    ],
+                    "max_tokens": 300,
+                },
+                headers={"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"},
+                timeout=8,
+            )
         r.raise_for_status()
         translated = r.json()["choices"][0]["message"]["content"].strip().split("\n")
         result = []
@@ -61,7 +62,7 @@ def _translate_headlines(headlines: list[dict]) -> list[dict]:
         return headlines
 
 
-def fetch_news(city_key: str = "stuttgart") -> list[dict]:
+async def fetch_news(city_key: str = "stuttgart") -> list[dict]:
     """Fetch city-relevant RSS headlines, translated to English."""
     from app.main import CITIES, DEFAULT_CITY
     city_cfg = CITIES.get(city_key, CITIES[DEFAULT_CITY])
@@ -73,24 +74,25 @@ def fetch_news(city_key: str = "stuttgart") -> list[dict]:
     if cached and (now - cached["ts"]) < CACHE_TTL:
         return cached["items"]
 
-    for url in feeds:
-        try:
-            r = httpx.get(url, timeout=5, follow_redirects=True)
-            r.raise_for_status()
-            root = ET.fromstring(r.text)
-            items = []
-            for item in root.iter("item"):
-                title = item.findtext("title", "").strip()
-                desc = item.findtext("description", "").strip()
-                link = item.findtext("link", "").strip()
-                if title and _is_relevant(title, desc, keywords):
-                    items.append({"title": title, "link": link})
-                if len(items) >= 5:
-                    break
-            if items:
-                items = _translate_headlines(items)
-                _cache[city_key] = {"items": items, "ts": now}
-                return items
-        except Exception:
-            continue
+    async with httpx.AsyncClient() as client:
+        for url in feeds:
+            try:
+                r = await client.get(url, timeout=5, follow_redirects=True)
+                r.raise_for_status()
+                root = ET.fromstring(r.text)
+                items = []
+                for item in root.iter("item"):
+                    title = item.findtext("title", "").strip()
+                    desc = item.findtext("description", "").strip()
+                    link = item.findtext("link", "").strip()
+                    if title and _is_relevant(title, desc, keywords):
+                        items.append({"title": title, "link": link})
+                    if len(items) >= 5:
+                        break
+                if items:
+                    items = await _translate_headlines(items)
+                    _cache[city_key] = {"items": items, "ts": now}
+                    return items
+            except Exception:
+                continue
     return list(FALLBACK_NEWS.get(city_key, []))

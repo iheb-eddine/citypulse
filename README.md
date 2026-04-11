@@ -2,112 +2,128 @@
 
 > **Turn every citizen's phone into a smart city sensor.**
 
-🌐 **[citypulse.help](https://citypulse.help)**
+🌐 **Live at [citypulse.help](https://citypulse.help)** &nbsp;|&nbsp; 📦 [GitHub](https://github.com/iheb-eddine/citypulse)
 
-[![Built for AlgoFest Hackathon 2026](https://img.shields.io/badge/AlgoFest_2026-Smart_Cities_%26_IoT-1a73e8)](#)
+[![Built for AlgoFest 2026](https://img.shields.io/badge/AlgoFest_2026-Smart_Cities_%26_IoT-1a73e8)](#)
+[![Python 3.10+](https://img.shields.io/badge/python-3.10%2B-blue)](#)
+[![Tests](https://img.shields.io/badge/tests-47_passing-brightgreen)](#running-tests)
 
-Citizens snap a photo of an urban issue — pothole, broken streetlight, graffiti — and CityPulse does the rest. AI classifies the problem, routes it to the right city department, and clusters hotspots on a live dashboard so resources go where they're needed most.
-
-**Why CityPulse?**
-- **Zero infrastructure** — works in any mobile browser, no app install
-- **Real-time AI classification** — Groq (Llama 4 Scout) vision API categorizes issues instantly
-- **Spatial clustering** — DBSCAN groups nearby reports into actionable hotspots
-- **City health score** — a single KPI for urban wellbeing, updated on every dashboard load
+Citizens snap a photo of an urban issue — pothole, broken streetlight, illegal dumping — and CityPulse does the rest. AI classifies the problem in seconds, routes it to the right city department, and clusters hotspots on a live dashboard so resources go where they're needed most. City officials get auto-generated council briefings, and an AI chat assistant answers questions about urban trends using real report data and local news.
 
 ---
 
-## How It Works
+## ✨ Features
 
-1. **Upload** — Citizen takes a photo and shares GPS location via mobile browser
-2. **AI Classify** — Gemini 2.0 Flash analyzes the image → category, severity, department
-3. **Store** — Report saved to SQLite with coordinates and classification
-4. **Cluster** — Dashboard runs DBSCAN on all report coordinates (on-demand, every page load)
-5. **Visualize** — Interactive Folium/Leaflet map with color-coded markers, health score, and hotspot detection
+| Feature | Description |
+|---|---|
+| 📸 **Photo Upload & AI Classification** | Upload a photo → Groq Llama 4 Scout vision model classifies category, severity, and department instantly |
+| 🗺️ **Interactive Map Dashboard** | Folium/Leaflet map with color-coded markers, popups with status controls, and layer toggle |
+| 🔥 **Heatmap with Time Slider** | HeatMapWithTime shows report density evolution day-by-day |
+| 📊 **DBSCAN Spatial Clustering** | Groups nearby reports into actionable hotspots (eps=0.003, min_samples=3) |
+| 💯 **City Health Score** | Severity-weighted metric (0–100) — a single KPI for urban wellbeing |
+| ♿ **Accessibility Impact Score** | Weighted score factoring category impact on mobility and accessibility |
+| 💬 **AI Chat Assistant** | Ask questions about city reports, trends, or local news — powered by Groq with live report context |
+| 📋 **AI City Council Briefing** | Auto-generated formal briefing with executive summary, findings, and recommendations |
+| 📡 **Real-Time SSE Live Updates** | Server-Sent Events push new reports to all connected dashboards with toast notifications |
+| 👍 **Citizen Upvote/Verify** | Confirm reports — 3 confirmations auto-escalate severity |
+| 🔄 **Resolution Workflow** | Track reports through open → in_progress → resolved |
+| 🌍 **GeoJSON Open Data API** | Standard GeoJSON endpoint for integration with external GIS tools |
+| 🔒 **EXIF Stripping & Privacy Badge** | All photo metadata is automatically stripped before storage |
+| 🎙️ **Voice Report Submission** | Describe issues by voice using Web Speech API (browser-native) |
+| 🏙️ **Multi-City Support** | City selector with per-city neighborhoods, news feeds, and map bounds |
+| 🌓 **Dark Mode** | System-aware + manual toggle, persisted in localStorage |
+| 📱 **PWA Support** | Service worker + manifest for installable mobile experience |
+| 📰 **Local News Integration** | RSS feeds filtered by city keywords, auto-translated to English via Groq |
 
 ---
 
-## Tech Stack
+## 🛠️ Tech Stack
 
 | Technology | Role |
 |---|---|
-| **FastAPI** | Web framework and API |
+| **FastAPI** | Web framework and REST API |
 | **SQLite + SQLAlchemy** | Database and ORM |
-| **Google Gemini 2.0 Flash** | Vision AI for image classification |
+| **Groq API** | AI — Llama 4 Scout (vision classification), Llama 3.1 8B (chat, briefing, news translation) |
 | **scikit-learn (DBSCAN)** | Geospatial clustering of reports |
-| **Folium / Leaflet.js** | Interactive map rendering |
+| **Folium / Leaflet.js** | Interactive map with heatmap time slider |
+| **Pillow** | EXIF metadata stripping for privacy |
+| **httpx** | HTTP client for Groq API, RSS feeds, seed data fetching |
 | **Jinja2** | Server-side HTML templates |
-| **NumPy** | Coordinate array processing |
-| **Vanilla HTML/CSS/JS** | Mobile-responsive frontend (no framework) |
-| **Pillow** | Seed data only — generates placeholder images |
+| **NumPy** | Coordinate array processing for clustering |
+| **python-dotenv** | Environment variable management |
+| **Vanilla HTML/CSS/JS** | Mobile-responsive frontend — no framework needed |
 
 ---
 
-## Architecture
+## 🏗️ Architecture
 
 ```
-┌─────────────┐     POST /api/reports      ┌──────────────┐
-│   Mobile     │ ──── photo + GPS ────────▶ │   FastAPI     │
-│   Browser    │                            │   Server      │
-└─────────────┘                            └──────┬───────┘
-                                                   │
-                                    ┌──────────────┼──────────────┐
-                                    ▼              ▼              │
-                             ┌────────────┐ ┌───────────┐        │
-                             │ Gemini 2.0 │ │  SQLite   │        │
-                             │ Flash API  │ │  Database │        │
-                             └─────┬──────┘ └─────┬─────┘        │
-                                   │              │              │
-                                   │  category,   │              │
-                                   │  severity,   │              │
-                                   │  department   │              │
-                                   └──────┬───────┘              │
-                                          ▼                      │
-                                   ┌─────────────┐              │
-                                   │   Report     │              │
-                                   │   Stored     │              │
-                                   └─────────────┘              │
-                                                                 │
-┌─────────────┐     GET /dashboard         ┌──────────────┐      │
-│   Browser    │ ◀──── map + stats ─────── │  Dashboard   │ ◀────┘
-└─────────────┘                            │  Route       │
-                                           └──────┬───────┘
-                                                   │
-                                    ┌──────────────┼──────────────┐
-                                    ▼              ▼              ▼
-                             ┌────────────┐ ┌───────────┐ ┌───────────┐
-                             │  DBSCAN    │ │  Health   │ │  Folium   │
-                             │  Clustering│ │  Score    │ │  Map Gen  │
-                             └────────────┘ └───────────┘ └───────────┘
+┌─────────────┐                              ┌──────────────────┐
+│   Mobile     │  POST /api/reports           │    FastAPI        │
+│   Browser    │ ──── photo + GPS ──────────▶ │    Server         │
+│              │                              │                  │
+│              │  GET /api/stream (SSE)       │  ┌────────────┐  │
+│              │ ◀──── live updates ───────── │  │ SSE Engine │  │
+└─────────────┘                              │  └────────────┘  │
+                                             └───────┬──────────┘
+                                                     │
+                              ┌───────────────┬──────┴──────┬──────────────┐
+                              ▼               ▼             ▼              ▼
+                       ┌────────────┐  ┌───────────┐ ┌──────────┐  ┌───────────┐
+                       │ Groq API   │  │  SQLite   │ │  DBSCAN  │  │  RSS/News │
+                       │ Llama 4    │  │  Database │ │ Clustering│  │  Fetcher  │
+                       │ Scout      │  └─────┬─────┘ └──────────┘  └───────────┘
+                       └─────┬──────┘        │
+                             │               │
+                    category, severity,      │
+                    department, description  │
+                             │               │
+                             └───────┬───────┘
+                                     ▼
+┌─────────────┐  GET /dashboard    ┌──────────────────┐
+│   Browser    │ ◀──── map + ───── │  Dashboard Route  │
+│              │    stats + chat   │  + Folium Map Gen │
+└─────────────┘                    │  + Health Score   │
+                                   │  + Heatmap        │
+                                   └──────────────────┘
 ```
 
 ---
 
-## Project Structure
+## 📁 Project Structure
 
 ```
 citypulse/
 ├── app/
 │   ├── __init__.py
-│   ├── main.py              # FastAPI routes, clustering, health score
+│   ├── main.py              # FastAPI routes, clustering, health score, chat, briefing, SSE
 │   ├── database.py          # SQLAlchemy engine and session
 │   ├── models.py            # Report model with constraints
-│   ├── gemini.py            # Gemini API client + fallback logic
+│   ├── gemini.py            # Groq Llama 4 Scout vision client + fallback logic
+│   ├── news.py              # RSS news fetcher with city filtering + Groq translation
 │   ├── templates/
-│   │   ├── submit.html      # Mobile-first report submission form
-│   │   └── dashboard.html   # Map + stats dashboard
+│   │   ├── submit.html      # Mobile-first report submission (photo, GPS, voice, map picker)
+│   │   ├── dashboard.html   # Map + stats + chat widget + SSE live updates
+│   │   └── briefing.html    # AI-generated city council briefing
 │   └── static/
-│       ├── css/style.css    # Shared responsive styles
+│       ├── css/style.css    # Shared responsive styles with dark mode
+│       ├── manifest.json    # PWA manifest
+│       ├── sw.js            # Service worker
+│       ├── icon-192.svg     # PWA icon
+│       ├── icon-512.svg     # PWA icon
 │       └── uploads/         # Uploaded and seed images
 ├── seed_data/
-│   └── seed.py              # Generates 50 demo reports across Stuttgart
+│   ├── seed.py              # Generates demo reports using Mapillary street photos + AI classification
+│   └── reclassify.py        # Re-classify existing reports with updated AI
 ├── tests/
 │   ├── conftest.py          # Fixtures: in-memory DB, test client, mocks
 │   ├── test_routes.py       # Basic route tests
-│   ├── test_submit.py       # Report submission + validation tests
-│   ├── test_gemini.py       # Gemini parsing + fallback tests
+│   ├── test_submit.py       # Report submission + validation tests (18 tests)
+│   ├── test_gemini.py       # AI parsing + fallback tests
 │   ├── test_dashboard.py    # Dashboard rendering tests
 │   ├── test_clustering.py   # DBSCAN clustering tests
-│   └── test_health_score.py # Health score + trend tests
+│   └── test_health_score.py # Health score + trend + accessibility tests
+├── deploy.sh                # Deployment script
 ├── requirements.txt         # Python dependencies
 ├── .env.example             # Template for environment variables
 └── .gitignore
@@ -115,17 +131,17 @@ citypulse/
 
 ---
 
-## Setup Instructions
+## 🚀 Setup Instructions
 
 ### Prerequisites
 
 - Python 3.10+
-- A [Google Gemini API key](https://aistudio.google.com/apikey) (free tier works)
+- A [Groq API key](https://console.groq.com/keys) (free tier works)
 
 ### 1. Clone and create virtual environment
 
 ```bash
-git clone <repo-url> citypulse
+git clone https://github.com/iheb-eddine/citypulse.git
 cd citypulse
 python -m venv .venv
 source .venv/bin/activate
@@ -143,24 +159,21 @@ pip install -r requirements.txt
 cp .env.example .env
 ```
 
-Edit `.env` and add your Gemini API key:
+Edit `.env` and add your Groq API key:
 
 ```
-GEMINI_API_KEY=your-api-key-here
+GROQ_API_KEY=your-groq-api-key-here
 ```
 
-> Without a valid key, image classification falls back to `"unclassified / medium / general"`. The app still works.
+> Without a valid key, image classification falls back to `"unclassified / medium / general"`. The app still works — AI features just degrade gracefully.
 
 ### 4. Seed demo data (optional)
 
-The seed script requires Pillow for generating placeholder images:
-
 ```bash
-pip install Pillow
 python seed_data/seed.py
 ```
 
-This creates 50 reports across Stuttgart neighborhoods with clustered hotspots.
+This fetches real street-level photos from Mapillary, classifies them with AI, and creates reports across Stuttgart neighborhoods. Requires `MAPILLARY_TOKEN` in `.env` (see `.env.example`).
 
 ### 5. Run the app
 
@@ -172,30 +185,46 @@ uvicorn app.main:app --reload
 
 | Page | URL |
 |---|---|
-| Submit a report | [http://localhost:8000](http://localhost:8000) |
-| City dashboard | [http://localhost:8000/dashboard](http://localhost:8000/dashboard) |
+| Dashboard | [http://localhost:8000](http://localhost:8000) |
+| Submit a report | [http://localhost:8000/submit](http://localhost:8000/submit) |
+| Council briefing | [http://localhost:8000/briefing](http://localhost:8000/briefing) |
 
 ---
 
-## Running Tests
+## 🧪 Running Tests
 
 ```bash
 pip install pytest httpx
 pytest tests/ -v
 ```
 
-47 tests covering routes, submission validation, Gemini parsing, dashboard rendering, DBSCAN clustering, and health score computation.
+47 tests covering routes, submission validation, AI parsing/fallback, dashboard rendering, DBSCAN clustering, and health score computation.
 
 ---
 
-## API Endpoints
+## 📡 API Endpoints
+
+### Pages (HTML)
 
 | Method | Path | Description |
 |---|---|---|
-| `GET` | `/` | Report submission form (HTML) |
-| `GET` | `/dashboard` | Interactive map + stats panel (HTML) |
-| `POST` | `/api/reports` | Submit a report (multipart: photo, latitude, longitude) |
-| `GET` | `/api/reports` | List reports (stub — returns `[]`) |
+| `GET` | `/`, `/dashboard` | Interactive map dashboard with stats, chat, and live updates |
+| `GET` | `/submit` | Mobile-first report submission form |
+| `GET` | `/briefing` | AI-generated city council briefing |
+
+### REST API
+
+| Method | Path | Description |
+|---|---|---|
+| `POST` | `/api/reports` | Submit a report (multipart: photo, lat, lng, description, city) |
+| `GET` | `/api/reports` | List all reports for a city (JSON) |
+| `GET` | `/api/reports/geojson` | GeoJSON FeatureCollection of all reports |
+| `GET` | `/api/dashboard` | Dashboard stats as JSON (health score, categories, hotspots) |
+| `POST` | `/api/reports/{id}/confirm` | Upvote/verify a report (auto-escalates severity at 3 confirms) |
+| `PATCH` | `/api/reports/{id}/status` | Update report status (open / in_progress / resolved) |
+| `POST` | `/api/chat` | AI chat — ask about city reports, trends, or news |
+| `GET` | `/api/briefing` | Generate city council briefing (JSON) |
+| `GET` | `/api/stream` | SSE stream — real-time new report notifications |
 
 ### POST /api/reports
 
@@ -206,6 +235,8 @@ pytest tests/ -v
 | `photo` | file | yes | JPEG, PNG, or WebP; max 10 MB |
 | `latitude` | string | yes | -90 to 90 |
 | `longitude` | string | yes | -180 to 180 |
+| `description_text` | string | no | Citizen description (merged with AI description) |
+| `city` | string | no | City key (defaults to nearest city) |
 
 **Response (201):**
 
@@ -218,31 +249,20 @@ pytest tests/ -v
   "category": "pothole",
   "severity": "high",
   "department": "roads",
-  "description": "Large pothole on main road",
+  "description": "AI: Large pothole on main road | Citizen: Near the bus stop",
+  "status": "open",
   "created_at": "2026-04-10 09:30:00"
 }
 ```
 
 ---
 
-## Key Features
+## 📸 Screenshots
 
-- **AI-Powered Classification** — Gemini 2.0 Flash vision API categorizes issues into 7 types, 4 severity levels, and 6 city departments
-- **Geospatial Clustering** — DBSCAN (eps=0.003, min_samples=3) groups nearby reports into hotspots for targeted response
-- **City Health Score** — Weighted severity metric (0–100) computed from all active reports
-- **Weekly Trend** — Compares this week's report count to last week's
-- **Interactive Map** — Folium/Leaflet map with color-coded markers (green/orange/red by severity) and popup details
-- **Mobile-Responsive** — Submit reports from any phone browser; dashboard stacks on small screens
-- **Graceful AI Fallback** — If Gemini is unavailable or returns invalid data, reports are saved as "unclassified" with medium severity
+> _Seed the database with `python seed_data/seed.py` and visit the dashboard to see CityPulse in action._
 
 ---
 
-## Screenshots
-
-> _Screenshots coming soon — seed the database and visit `/dashboard` to see the app in action._
-
----
-
-## License
+## 📄 License
 
 Built for [AlgoFest Hackathon 2026](https://algofest.dev) — Smart Cities & IoT track.
