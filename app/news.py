@@ -64,7 +64,7 @@ async def _translate_headlines(headlines: list[dict]) -> list[dict]:
 
 async def fetch_news(city_key: str = "stuttgart") -> list[dict]:
     """Fetch city-relevant RSS headlines, translated to English."""
-    from app.main import CITIES, DEFAULT_CITY
+    from app.config import CITIES, DEFAULT_CITY
     city_cfg = CITIES.get(city_key, CITIES[DEFAULT_CITY])
     keywords = city_cfg.get("news_keywords", set())
     feeds = city_cfg.get("rss_feeds", [])
