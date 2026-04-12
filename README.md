@@ -1,6 +1,10 @@
-# 🏙️ CityPulse — AI-Powered Urban Issue Triage
+<p align="center">
+  <img src="docs/logo.png" alt="CityPulse Logo" width="400">
+</p>
 
-> **Turn every citizen's phone into a smart city sensor.**
+<h1 align="center">CityPulse — AI-Powered Urban Issue Triage</h1>
+
+<p align="center"><strong>Turn every citizen's phone into a smart city sensor.</strong></p>
 
 🌐 **Live at [citypulse.help](https://citypulse.help)** &nbsp;|&nbsp; 📦 [GitHub](https://github.com/iheb-eddine/citypulse)
 
