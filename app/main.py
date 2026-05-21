@@ -44,6 +44,28 @@ from app.analytics import (
     compute_risk_scores, compute_hotspots, run_clustering,
 )
 
+from app.observability import (
+    ObservabilityMiddleware, health_check, get_metrics, setup_logging,
+)
+from app.anomaly import check_anomaly, get_state as anomaly_get_state
+from app.budget import optimize_budget
+from app.dispatch import optimize_dispatch
+from app.pipeline import get_report_pipeline, get_pipeline_stages, get_pipeline_status
+from app.priority import compute_priority
+from app.sla import get_params as sla_params, percentile as sla_percentile
+from app.severity_reasoning import generate_reasoning
+from app.sensors import router as sensors_router, sensor_loop
+from app.timelapse import router as timelapse_router
+from app.diffusion import compute_diffusion
+from app.causality import compute_causality
+from app.phash import find_duplicates, find_similarity_clusters
+from app.sla import router as sla_router
+from app.workorders import router as workorders_router
+from app.transparency import router as transparency_router
+from app.priority import router as priority_router
+from app.health_history import router as health_history_router
+from app.intelligence import router as intelligence_router
+
 load_dotenv()
 
 BASE_DIR = Path(__file__).resolve().parent
@@ -107,6 +129,7 @@ def _error(code: str, message: str) -> JSONResponse:
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    setup_logging()
     create_tables()
     # Migrate: add confirmations column if missing (existing DBs)
     from app.database import engine
@@ -122,12 +145,27 @@ async def lifespan(app: FastAPI):
             conn.execute(text("ALTER TABLE reports ADD COLUMN city TEXT NOT NULL DEFAULT 'stuttgart'"))
             conn.execute(text("UPDATE reports SET city = 'stuttgart' WHERE city IS NULL"))
             conn.commit()
+    _sensor_task = asyncio.create_task(sensor_loop())
     yield
+    _sensor_task.cancel()
 
 
 app = FastAPI(lifespan=lifespan)
+app.add_middleware(ObservabilityMiddleware)
 app.mount("/static", StaticFiles(directory=BASE_DIR / "static"), name="static")
 templates = Jinja2Templates(directory=BASE_DIR / "templates")
+app.get("/health")(health_check)
+app.get("/metrics")(get_metrics)
+app.get("/api/reports/{report_id}/pipeline")(get_report_pipeline)
+app.get("/api/pipeline/stages")(get_pipeline_stages)
+app.include_router(sensors_router)
+app.include_router(timelapse_router)
+app.include_router(sla_router)
+app.include_router(workorders_router)
+app.include_router(transparency_router)
+app.include_router(priority_router)
+app.include_router(health_history_router)
+app.include_router(intelligence_router)
 
 
 @app.get("/api/stream")
@@ -164,7 +202,7 @@ def _build_dashboard_data(db: Session, category: Optional[str] = None, severity:
     """Shared logic for dashboard HTML and API."""
     city_key, city_cfg = get_city(city)
     all_reports = db.query(Report).filter(Report.city == city_key).all()
-    run_clustering(all_reports, db)
+    run_clustering(all_reports, db, city_key)
 
     # Filter after clustering so cluster_ids stay consistent
     reports = all_reports
@@ -203,6 +241,10 @@ def _build_dashboard_data(db: Session, category: Optional[str] = None, severity:
 
 
 @app.get("/")
+async def landing(request: Request):
+    return templates.TemplateResponse(request, "landing.html", {})
+
+
 @app.get("/dashboard")
 async def dashboard(
     request: Request, db: Session = Depends(get_db),
@@ -447,6 +489,11 @@ async def create_report(
         "city": report.city,
     })
 
+    try:
+        check_anomaly(report.city, neighborhood_for_coords(report.latitude, report.longitude, report.city))
+    except Exception:
+        pass
+
     # Duplicate detection: nearby similar reports
     cutoff = datetime.now() - timedelta(days=7)
     nearby = db.query(Report).filter(
@@ -493,6 +540,99 @@ async def confirm_report(report_id: int, db: Session = Depends(get_db)):
     return {"confirmations": report.confirmations, "severity": report.severity}
 
 
+@app.get("/api/reports/{report_id}/reasoning")
+async def get_report_reasoning(report_id: int, db: Session = Depends(get_db)):
+    report = db.query(Report).filter(Report.id == report_id).first()
+    if not report:
+        return JSONResponse(status_code=404, content={"error": "Report not found"})
+    cutoff = datetime.now() - timedelta(days=7)
+    nearby_count = db.query(Report).filter(
+        Report.id != report.id,
+        Report.category == report.category,
+        Report.latitude.between(report.latitude - 0.002, report.latitude + 0.002),
+        Report.longitude.between(report.longitude - 0.002, report.longitude + 0.002),
+        Report.created_at >= cutoff,
+    ).count()
+    return generate_reasoning(report, nearby_count)
+
+
+@app.get("/api/reports/similarity-clusters")
+async def get_similarity_clusters(
+    city: str = "stuttgart", threshold: int = 12, db: Session = Depends(get_db)
+):
+    if not (0 <= threshold <= 32):
+        return JSONResponse(status_code=422, content={
+            "error": {"code": "INVALID_THRESHOLD", "message": "Threshold must be between 0 and 32"}
+        })
+    city_key, _ = get_city(city)
+    raw = find_similarity_clusters(city_key, threshold, db)
+    # Enrich and sort by size descending
+    reports_map = {}
+    all_ids = [rid for c in raw for rid in c["report_ids"]]
+    if all_ids:
+        reports_map = {r.id: r for r in db.query(Report).filter(Report.id.in_(all_ids)).all()}
+    clusters = []
+    for c in sorted(raw, key=lambda x: len(x["report_ids"]), reverse=True):
+        members = [reports_map[rid] for rid in c["report_ids"] if rid in reports_map]
+        if len(members) < 2:
+            continue
+        cats = [m.category for m in members]
+        neighs = [neighborhood_for_coords(m.latitude, m.longitude, city_key) for m in members]
+        rids = [m.id for m in members]
+        clusters.append({
+            "cluster_id": len(clusters) + 1,
+            "report_ids": rids,
+            "size": len(rids),
+            "avg_hamming_distance": c["avg_hamming_distance"],
+            "common_category": Counter(cats).most_common(1)[0][0] if cats else None,
+            "common_neighborhood": Counter(neighs).most_common(1)[0][0] if neighs else None,
+        })
+    return {"clusters": clusters, "total_clusters": len(clusters), "threshold": threshold, "city": city_key}
+
+
+@app.get("/api/reports/{report_id}/duplicates")
+async def get_report_duplicates(report_id: int, db: Session = Depends(get_db)):
+    report = db.query(Report).filter(Report.id == report_id).first()
+    if not report:
+        return JSONResponse(status_code=404, content={"error": "Report not found"})
+    try:
+        dupes = find_duplicates(report_id, db)
+    except Exception:
+        return JSONResponse(status_code=422, content={"error": "Could not compute hash for this report"})
+    return dupes
+
+
+@app.get("/api/reports/{report_id}/cascade")
+async def get_report_cascade(report_id: int, db: Session = Depends(get_db)):
+    report = db.query(Report).filter(Report.id == report_id).first()
+    if not report:
+        return JSONResponse(status_code=404, content={"error": "Report not found"})
+    city = report.city or "stuttgart"
+    cutoff = datetime.now() - timedelta(days=7)
+    nearby_count = db.query(Report).filter(
+        Report.id != report.id, Report.category == report.category,
+        Report.latitude.between(report.latitude - 0.002, report.latitude + 0.002),
+        Report.longitude.between(report.longitude - 0.002, report.longitude + 0.002),
+        Report.created_at >= cutoff,
+    ).count()
+    scale, shape = sla_params(report.category, report.severity)
+    try:
+        dupes = find_duplicates(report_id, db)[:3]
+    except Exception:
+        dupes = []
+    return {
+        "report": {"id": report.id, "category": report.category, "severity": report.severity,
+                   "department": report.department, "status": report.status,
+                   "created_at": report.created_at.isoformat()},
+        "pipeline": get_pipeline_status(report),
+        "reasoning": generate_reasoning(report, nearby_count),
+        "priority": compute_priority(report, city),
+        "sla": {"scale": scale, "shape": shape,
+                "median_hours": round(sla_percentile(0.5, scale, shape), 1),
+                "p75_hours": round(sla_percentile(0.75, scale, shape), 1),
+                "p90_hours": round(sla_percentile(0.90, scale, shape), 1)},
+        "duplicates": dupes,
+    }
 
 
 @app.patch("/api/reports/{report_id}/status")
@@ -754,6 +894,120 @@ async def _generate_briefing(db: Session, city: Optional[str] = None) -> dict:
 @app.get("/api/briefing")
 async def api_briefing(db: Session = Depends(get_db), city: Optional[str] = None):
     return await _generate_briefing(db, city=city)
+
+
+@app.get("/api/budget/optimize")
+def budget_optimize(city: Optional[str] = None, budget: float = 100000.0, db: Session = Depends(get_db)):
+    import math
+    if budget <= 0 or not math.isfinite(budget):
+        return JSONResponse({"error": "Budget must be a positive finite number"}, status_code=400)
+    city_key, _ = get_city(city)
+    return optimize_budget(city_key, budget, db)
+
+
+@app.get("/api/dispatch/optimize")
+def dispatch_optimize(city: Optional[str] = None, crews: int = 3, db: Session = Depends(get_db)):
+    if crews <= 0 or crews > 50:
+        return JSONResponse({"error": "crews must be between 1 and 50"}, status_code=400)
+    city_key, _ = get_city(city)
+    return optimize_dispatch(city_key, crews, db)
+
+
+@app.get("/api/predict/diffusion")
+def predict_diffusion(city: Optional[str] = None, horizon: int = 7, db: Session = Depends(get_db)):
+    if horizon not in (7, 14, 30):
+        return JSONResponse({"error": "horizon must be 7, 14, or 30"}, status_code=400)
+    city_key, _ = get_city(city)
+    return compute_diffusion(city_key, horizon, db)
+
+
+@app.get("/api/causality")
+def causality(city: Optional[str] = None, db: Session = Depends(get_db)):
+    city_key, _ = get_city(city)
+    return compute_causality(city_key, db)
+
+
+@app.get("/api/neighborhoods/compare")
+def neighborhoods_compare(a: str, b: str, city: Optional[str] = None, db: Session = Depends(get_db)):
+    city_key, cfg = get_city(city)
+    bbox_map = {name: (lat_min, lat_max, lng_min, lng_max)
+                for lat_min, lat_max, lng_min, lng_max, name in cfg["neighborhoods"]}
+    invalid = [n for n in (a, b) if n not in bbox_map]
+    if invalid:
+        return JSONResponse({"error": f"Unknown neighborhood(s): {', '.join(invalid)}"}, status_code=422)
+    reports = db.query(Report).filter(Report.city == city_key).all()
+    results = []
+    for name in (a, b):
+        lat_min, lat_max, lng_min, lng_max = bbox_map[name]
+        matched = [r for r in reports if lat_min <= r.latitude <= lat_max and lng_min <= r.longitude <= lng_max]
+        count = len(matched)
+        cats = Counter(r.category for r in matched)
+        avg_sev = (sum(SEVERITY_WEIGHTS.get(r.severity, 1) for r in matched) / count) if count else 0
+        res_rate = (sum(1 for r in matched if r.status == "resolved") / count) if count else 0
+        state = anomaly_get_state(city_key, name)
+        results.append({
+            "name": name, "report_count": count,
+            "health_score": round(compute_health_score(matched), 1),
+            "top_category": cats.most_common(1)[0][0] if cats else None,
+            "avg_severity": round(avg_sev, 2), "resolution_rate": round(res_rate, 2),
+            "anomaly_active": state is not None and state["last_alert"] > 0,
+        })
+    return {"city": city_key, "neighborhoods": results}
+
+
+@app.get("/api/reports/age-distribution")
+def report_age_distribution(city: Optional[str] = None, db: Session = Depends(get_db)):
+    city_key, _ = get_city(city)
+    now = datetime.utcnow()
+    open_reports = db.query(Report).filter(Report.city == city_key, Report.status != "resolved").all()
+    ages = sorted([(now - r.created_at).total_seconds() / 3600 for r in open_reports])
+    total = len(ages)
+    bucket_defs = [("0-24h",0,24),("1-3d",24,72),("3-7d",72,168),("7-14d",168,336),("14-30d",336,720),("30d+",720,None)]
+    buckets = []
+    for label, lo, hi in bucket_defs:
+        count = sum(1 for a in ages if a >= lo and (hi is None or a < hi))
+        buckets.append({"label": label, "min_hours": lo, "max_hours": hi,
+                        "count": count, "percentage": round(count * 100 / total, 1) if total else 0})
+    if total:
+        mid = total // 2
+        median = (ages[mid] if total % 2 else (ages[mid - 1] + ages[mid]) / 2)
+    else:
+        median = 0
+    return {"city": city_key, "total_open": total, "buckets": buckets,
+            "median_age_hours": round(median, 1), "oldest_report_hours": round(ages[-1], 1) if ages else 0}
+
+
+@app.get("/api/departments/efficiency")
+def department_efficiency(city: Optional[str] = None, db: Session = Depends(get_db)):
+    city_key, _ = get_city(city)
+    now = datetime.utcnow()
+    reports = db.query(Report).filter(Report.city == city_key).all()
+    total_all = len(reports)
+    if not total_all:
+        return {"city": city_key, "departments": []}
+    depts: dict = {}
+    for r in reports:
+        d = depts.setdefault(r.department, {"total": 0, "resolved": 0, "open_ages": []})
+        d["total"] += 1
+        if r.status == "resolved":
+            d["resolved"] += 1
+        else:
+            d["open_ages"].append((now - r.created_at).total_seconds() / 3600)
+    results = []
+    for name, d in depts.items():
+        res_rate = d["resolved"] / d["total"]
+        avg_age = sum(d["open_ages"]) / len(d["open_ages"]) if d["open_ages"] else 0.0
+        results.append({"name": name, "total_reports": d["total"], "resolved_count": d["resolved"],
+                        "resolution_rate": round(res_rate, 4), "avg_age_hours": round(avg_age, 1),
+                        "workload_share": round(d["total"] / total_all, 4)})
+    max_age = max(r["avg_age_hours"] for r in results)
+    for r in results:
+        norm_age = (r["avg_age_hours"] / max_age) if max_age > 0 else 0.0
+        r["efficiency_score"] = round(r["resolution_rate"] * 0.6 + (1 - norm_age) * 0.4, 4)
+    results.sort(key=lambda x: x["efficiency_score"], reverse=True)
+    for i, r in enumerate(results, 1):
+        r["rank"] = i
+    return {"city": city_key, "departments": results}
 
 
 @app.get("/briefing")

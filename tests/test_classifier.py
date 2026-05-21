@@ -38,6 +38,7 @@ def test_parse_markdown_wrapped_json():
     assert result["description"] == "Wall tagged"
 
 
+@patch.dict("os.environ", {"GROQ_API_KEY": "test-key"})
 @patch("app.classifier.httpx.AsyncClient")
 def test_groq_called_as_primary(mock_client_cls):
     import asyncio

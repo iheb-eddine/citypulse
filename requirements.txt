@@ -6,6 +6,7 @@ httpx
 folium
 scikit-learn
 numpy
+scipy
 jinja2
 python-multipart
 Pillow

@@ -117,15 +117,14 @@ def compute_hotspots(reports: list, city_key: Optional[str] = None) -> list:
     return hotspots
 
 
-_last_cluster_count: int = -1
+_last_cluster_counts: dict[str, int] = {}
 
 
-def run_clustering(reports: list[Report], db: Session) -> None:
+def run_clustering(reports: list[Report], db: Session, city_key: str = "stuttgart") -> None:
     """Run DBSCAN on report coordinates and update cluster_id in DB."""
-    global _last_cluster_count
     if not reports:
         return
-    if len(reports) == _last_cluster_count:
+    if len(reports) == _last_cluster_counts.get(city_key, -1):
         return
     from sklearn.cluster import DBSCAN
     coords = np.array([[r.latitude, r.longitude] for r in reports])
@@ -133,4 +132,4 @@ def run_clustering(reports: list[Report], db: Session) -> None:
     for report, label in zip(reports, labels):
         report.cluster_id = None if label == -1 else int(label)
     db.commit()
-    _last_cluster_count = len(reports)
+    _last_cluster_counts[city_key] = len(reports)
