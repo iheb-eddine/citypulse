@@ -34,3 +34,24 @@ def test_dashboard_marker_colors(test_client, db_session):
     response = test_client.get("/dashboard")
     assert response.status_code == 200
     assert "red" in response.text.lower()
+
+
+def test_dashboard_pipeline_bar(test_client):
+    response = test_client.get("/dashboard")
+    assert response.status_code == 200
+    assert "pipeline-bar" in response.text
+    assert "pipeline-stage" in response.text
+
+
+def test_dashboard_diffusion_section(test_client):
+    response = test_client.get("/dashboard")
+    assert response.status_code == 200
+    assert "diffusion-section" in response.text
+    assert "diffusion-btn" in response.text
+
+
+def test_dashboard_timelapse_section(test_client):
+    response = test_client.get("/dashboard")
+    assert response.status_code == 200
+    assert "timelapse-section" in response.text
+    assert "timelapse-btn" in response.text

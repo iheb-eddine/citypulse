@@ -15,3 +15,5 @@ dist/
 build/
 .pytest_cache/
 DEMO_SCRIPT.md
+docs/design-*.md
+devpost-submission.md

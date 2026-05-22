@@ -1,0 +1,97 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>CityPulse — Smart City Sensor Platform</title>
+    <link rel="stylesheet" href="/static/css/style.css">
+    <script>document.documentElement.dataset.theme=localStorage.getItem('theme')||''</script>
+    <link rel="manifest" href="/static/manifest.json">
+    <meta name="theme-color" content="#1a73e8">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <style>
+        .landing-hero{text-align:center;padding:4rem 1.5rem 2rem;background:linear-gradient(135deg,var(--blue-light),var(--bg))}
+        .landing-hero .logo{font-size:3rem;margin-bottom:0.5rem}
+        .landing-hero h1{font-size:2rem;font-weight:800;color:var(--text);margin-bottom:0.75rem}
+        .landing-hero p{color:var(--text-muted);font-size:1.1rem;max-width:540px;margin:0 auto}
+        .landing-stats{display:flex;justify-content:center;align-items:center;gap:0.5rem;padding:1.5rem 1rem;flex-wrap:wrap;font-size:1rem;font-weight:600;color:var(--text)}
+        .landing-stats .sep{color:var(--text-light)}
+        .landing-cta{display:flex;gap:1rem;justify-content:center;padding:1rem 1.5rem 2.5rem;flex-wrap:wrap}
+        .landing-cta a{padding:12px 28px;border-radius:var(--radius-sm);font-size:1rem;font-weight:600;text-decoration:none;transition:background .2s,color .2s}
+        .landing-cta .btn-primary{background:var(--blue);color:#fff}
+        .landing-cta .btn-primary:hover{background:var(--blue-dark)}
+        .landing-cta .btn-secondary{border:2px solid var(--blue);color:var(--blue);background:transparent}
+        .landing-cta .btn-secondary:hover{background:var(--blue-light)}
+        .landing-features{display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:1rem;padding:0 1.5rem 2.5rem;max-width:960px;margin:0 auto}
+        .feature-card{background:var(--card);border-radius:var(--radius);padding:1.5rem;box-shadow:var(--shadow)}
+        .feature-card .icon{font-size:2rem;margin-bottom:0.5rem}
+        .feature-card h3{font-size:1rem;font-weight:700;margin-bottom:0.5rem;color:var(--text)}
+        .feature-card p{font-size:0.88rem;color:var(--text-muted);line-height:1.5}
+        .landing-algorithms{max-width:960px;margin:0 auto;padding:0 1.5rem 2.5rem}
+        .landing-algorithms h2{font-size:1.25rem;font-weight:700;margin-bottom:1rem;color:var(--text)}
+        .algo-table{width:100%;border-collapse:collapse;font-size:0.85rem}
+        .algo-table th{text-align:left;padding:8px 10px;border-bottom:2px solid var(--border);color:var(--text-muted);font-weight:600}
+        .algo-table td{padding:8px 10px;border-bottom:1px solid var(--border);color:var(--text)}
+        .algo-table .complexity{font-family:ui-monospace,SFMono-Regular,monospace;color:var(--text-muted)}
+        [data-theme="dark"] .landing-cta .btn-primary{color:#0a1628}
+        @media(prefers-color-scheme:dark){:root:not([data-theme="light"]) .landing-cta .btn-primary{color:#0a1628}}
+    </style>
+</head>
+<body>
+<div class="nav-bar">
+    <a href="/" class="brand">🏙️ CityPulse</a>
+    <nav>
+        <a href="/submit">Submit</a><a href="/dashboard">Dashboard</a><a href="/briefing">Briefing</a><button class="theme-toggle" onclick="document.documentElement.dataset.theme=document.documentElement.dataset.theme==='dark'?'light':'dark';localStorage.setItem('theme',document.documentElement.dataset.theme)" title="Toggle dark mode">🌓</button>
+    </nav>
+</div>
+
+<section class="landing-hero">
+    <div class="logo">🏙️</div>
+    <h1>Turn every citizen's phone into a smart city sensor</h1>
+    <p>AI-powered urban issue detection, triage, and dispatch — from photo to fix in seconds.</p>
+</section>
+
+<div class="landing-stats" id="live-stats">
+    <span data-stat="reports">274 tests</span><span class="sep">•</span>
+    <span data-stat="score">8 algorithm families</span><span class="sep">•</span>
+    <span data-stat="sensors">20 IoT sensors</span><span class="sep">•</span>
+    <span data-stat="uptime">Live</span>
+</div>
+
+<div class="landing-cta">
+    <a href="/submit" class="btn-primary">Report an Issue</a>
+    <a href="/dashboard" class="btn-secondary">View Dashboard</a>
+</div>
+
+<section class="landing-features">
+    <div class="feature-card"><div class="icon">🧠</div><h3>AI Classification</h3><p>Photos classified by Llama 4 Scout vision model into 7 categories with severity scoring and chain-of-thought reasoning</p></div>
+    <div class="feature-card"><div class="icon">⚡</div><h3>Anomaly Detection</h3><p>Bayesian Poisson-Gamma priors on 20 IoT sensors detect neighborhood anomalies; z-score alerting via SSE</p></div>
+    <div class="feature-card"><div class="icon">🚛</div><h3>Crew Dispatch</h3><p>K-Means clustering + 2-opt TSP optimization routes repair crews to minimize travel distance</p></div>
+    <div class="feature-card"><div class="icon">📈</div><h3>Predictive Analytics</h3><p>Graph diffusion models predict issue spread; cross-correlation analysis reveals causal cascades</p></div>
+</section>
+
+<section class="landing-algorithms">
+    <h2>Powered by</h2>
+    <table class="algo-table">
+        <thead><tr><th>Algorithm</th><th>Family</th><th>Complexity</th></tr></thead>
+        <tbody>
+            <tr><td>Vision LLM Classification</td><td>AI/LLM</td><td class="complexity">O(1) per API call</td></tr>
+            <tr><td>DBSCAN Spatial Clustering</td><td>Clustering</td><td class="complexity">O(n log n)</td></tr>
+            <tr><td>K-Means Crew Assignment</td><td>Clustering</td><td class="complexity">O(n·k·i)</td></tr>
+            <tr><td>2-opt Route Improvement</td><td>Optimization</td><td class="complexity">O(n²) per iteration</td></tr>
+            <tr><td>Bayesian Poisson-Gamma Anomaly</td><td>Statistics</td><td class="complexity">O(1) per update</td></tr>
+            <tr><td>Linear Programming Budget</td><td>Optimization</td><td class="complexity">O(n·m) simplex</td></tr>
+            <tr><td>Graph Diffusion Prediction</td><td>Prediction</td><td class="complexity">O(n³)</td></tr>
+            <tr><td>Cross-Correlation Causality</td><td>Causality</td><td class="complexity">O(n·p) per pair</td></tr>
+            <tr><td>Weibull Survival (SLA)</td><td>Survival</td><td class="complexity">O(1) per report</td></tr>
+            <tr><td>Perceptual Hashing (pHash)</td><td>Deduplication</td><td class="complexity">O(1) per comparison</td></tr>
+        </tbody>
+    </table>
+</section>
+
+<footer class="site-footer">CityPulse — AI-powered urban issue triage <span class="badge">AlgoFest 2026</span></footer>
+<script>
+(async()=>{try{const[dash,intel,health]=await Promise.all([fetch('/api/dashboard').then(r=>r.ok?r.json():Promise.reject()),fetch('/api/intelligence-score').then(r=>r.ok?r.json():Promise.reject()),fetch('/health').then(r=>r.ok?r.json():Promise.reject())]);const s=Math.floor(health.uptime_seconds),d=Math.floor(s/86400),h=Math.floor((s%86400)/3600);document.querySelector('[data-stat="reports"]').textContent=dash.total_reports+' reports';document.querySelector('[data-stat="score"]').textContent='Score: '+intel.score+'/100';document.querySelector('[data-stat="sensors"]').textContent='20 sensors';document.querySelector('[data-stat="uptime"]').textContent='Uptime: '+d+'d '+h+'h'}catch(e){}})();
+</script>
+</body>
+</html>

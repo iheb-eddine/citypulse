@@ -42,12 +42,118 @@
             <noscript><button type="submit">Filter</button></noscript>
         </form>
     </div>
+    <div class="pipeline-bar" aria-live="polite" aria-label="Data pipeline status">
+        <span class="pipeline-stage" data-stage="0">Upload</span>
+        <span class="pipeline-arrow">→</span>
+        <span class="pipeline-stage" data-stage="1">Classify</span>
+        <span class="pipeline-arrow">→</span>
+        <span class="pipeline-stage" data-stage="2">Anomaly</span>
+        <span class="pipeline-arrow">→</span>
+        <span class="pipeline-stage" data-stage="3">Budget</span>
+        <span class="pipeline-arrow">→</span>
+        <span class="pipeline-stage" data-stage="4">Dispatch</span>
+    </div>
     <div class="dashboard-layout">
         <div class="map-wrap">
             {% if empty %}<div class="no-reports">{% if filter_category or filter_severity %}🔍 No reports match current filters{% else %}📍 No reports yet — <a href="/submit" style="color:#1a73e8;text-decoration:underline">submit the first one</a>{% endif %}</div>{% endif %}
             {{ map_html | safe }}
         </div>
         <div id="stats-panel">
+            <div class="stat-section" id="intelligence-score-section">
+                <h3>City Intelligence Score</h3>
+                <div class="intelligence-score-display">
+                    <span class="intelligence-big-number" id="intel-score">—</span>
+                    <span class="intelligence-label">/100</span>
+                </div>
+                <div class="intelligence-components" id="intel-components">
+                    <div class="intel-component">
+                        <span class="intel-comp-label">Health</span>
+                        <span class="intel-comp-value" id="intel-health">—</span>
+                    </div>
+                    <div class="intel-component">
+                        <span class="intel-comp-label">SLA</span>
+                        <span class="intel-comp-value" id="intel-sla">—</span>
+                    </div>
+                    <div class="intel-component">
+                        <span class="intel-comp-label">Transparency</span>
+                        <span class="intel-comp-value" id="intel-transparency">—</span>
+                    </div>
+                    <div class="intel-component">
+                        <span class="intel-comp-label">Anomaly-Free</span>
+                        <span class="intel-comp-value" id="intel-anomaly">—</span>
+                    </div>
+                </div>
+            </div>
+            <div class="stat-section" id="health-trend-section">
+                <h3>Health Trend <span class="health-trend-period">14 days</span></h3>
+                <select id="health-trend-neighborhood" class="health-trend-select" aria-label="Select neighborhood for health trend"></select>
+                <div class="health-trend-chart" aria-label="Health score trend over 14 days" role="img"></div>
+                <div class="health-trend-axis"><span>14d ago</span><span>Today</span></div>
+            </div>
+            <div class="stat-section">
+                <button id="dispatch-btn" class="dispatch-btn" aria-busy="false">🚛 Optimize Dispatch</button>
+                <div id="dispatch-results" aria-live="polite"></div>
+            </div>
+            <div class="stat-section">
+                <button id="budget-btn" class="budget-btn" aria-busy="false">💰 Optimize Budget</button>
+                <div id="budget-results" aria-live="polite"></div>
+            </div>
+            <div class="stat-section" id="sensor-section">
+                <h3>Sensor Network <span style="float:right;font-weight:400;text-transform:none;letter-spacing:0">20 sensors</span></h3>
+                <div class="sensor-grid" id="sensor-grid" aria-label="IoT sensor status grid"></div>
+            </div>
+            <div class="stat-section" id="diffusion-section">
+                <h3>Diffusion Prediction</h3>
+                <div class="diffusion-controls">
+                    <select id="diffusion-horizon" aria-label="Prediction horizon">
+                        <option value="7">7 days</option>
+                        <option value="14">14 days</option>
+                        <option value="30">30 days</option>
+                    </select>
+                    <button id="diffusion-btn" class="dispatch-btn">🔮 Predict Spread</button>
+                    <button id="diffusion-clear" class="dispatch-clear-btn" hidden>✕ Clear Prediction</button>
+                </div>
+                <div id="diffusion-legend" class="diffusion-legend" hidden aria-live="polite"></div>
+            </div>
+            <div class="stat-section" id="timelapse-section">
+                <h3>City Heartbeat</h3>
+                <div class="timelapse-player">
+                    <button id="timelapse-btn" class="dispatch-btn">▶ Play</button>
+                    <span id="timelapse-day-counter" style="margin-left:8px;font-size:0.85rem;color:var(--text-muted)">Day 0 / 30</span>
+                </div>
+                <div class="timelapse-progress"><div class="timelapse-progress-fill" id="timelapse-fill"></div></div>
+                <div class="timelapse-stats" id="timelapse-stats" hidden>
+                    <div><span class="timelapse-label">Date</span><span id="tl-date">—</span></div>
+                    <div><span class="timelapse-label">Health</span><span id="tl-health">—</span></div>
+                    <div><span class="timelapse-label">Reports</span><span id="tl-reports">—</span></div>
+                    <div><span class="timelapse-label">New Today</span><span id="tl-new">—</span></div>
+                </div>
+            </div>
+            <div class="stat-section" id="transparency-section" aria-live="polite" hidden>
+                <h3 title="Department SLA compliance transparency scores">Transparency Scores ℹ️</h3>
+                <div id="transparency-content"></div>
+            </div>
+            <div class="stat-section" id="sla-section" aria-live="polite" hidden>
+                <h3 title="SLA compliance based on survival prediction models">SLA Compliance ℹ️</h3>
+                <div id="sla-content"></div>
+            </div>
+            <div class="stat-section" id="workorder-section">
+                <h3>Work Order</h3>
+                <div class="workorder-controls">
+                    <input type="number" id="workorder-report-id" placeholder="Report ID" min="1" aria-label="Report ID for work order generation">
+                    <button id="workorder-btn" class="dispatch-btn" aria-busy="false">📋 Generate Work Order</button>
+                </div>
+                <div id="workorder-results" aria-live="polite"></div>
+            </div>
+            <div class="stat-section" id="causality-section">
+                <h3>Causality Network</h3>
+                <button id="causality-btn" class="dispatch-btn" aria-busy="false">🔗 Show Causality</button>
+                <div id="causality-results" aria-live="polite"></div>
+            </div>
+            <div class="stat-section" id="priority-section">
+                <h3>Priority Queue <button id="priority-refresh-btn" class="priority-refresh-btn" aria-label="Refresh priority queue" aria-busy="false">↻</button></h3>
+                <div id="priority-list" class="priority-list" aria-live="polite"></div>
+            </div>
             <div class="health-score {% if health_score >= 70 %}health-green{% elif health_score >= 40 %}health-amber{% else %}health-red{% endif %}">
                 <div class="label" title="Overall urban wellbeing score. 100 = no issues, 0 = critical. Based on report count and severity.">City Health Score ℹ️</div>
                 <div class="score">{{ health_score | round(1) }}</div>
@@ -122,6 +228,15 @@
                 <h3 title="Reports this week vs last week">Trend</h3>
                 <div class="trend">{{ trend_text }}</div>
             </div>
+            <div class="stat-section" id="metrics-section" aria-live="polite">
+                <h3>System Metrics <span id="metrics-updated" style="float:right;font-weight:400;text-transform:none;letter-spacing:0;color:var(--text-muted)"></span></h3>
+                <div class="metrics-grid" aria-label="System performance metrics">
+                    <div class="metric-card"><span class="metric-label">Requests</span><span class="metric-value" id="mv-requests">—</span></div>
+                    <div class="metric-card"><span class="metric-label">Error Rate</span><span class="metric-value" id="mv-error">—</span></div>
+                    <div class="metric-card"><span class="metric-label">p95 Latency</span><span class="metric-value" id="mv-latency">—</span></div>
+                    <div class="metric-card"><span class="metric-label">Uptime</span><span class="metric-value" id="mv-uptime">—</span></div>
+                </div>
+            </div>
         </div>
     </div>
     <button class="chat-fab" id="chatFab" aria-label="Open AI chat assistant" onclick="toggleChat()">💬</button>
@@ -144,6 +259,9 @@
     .toast{pointer-events:auto;background:var(--card);color:var(--text);border:1px solid var(--border);border-left:4px solid var(--blue);border-radius:var(--radius-sm);padding:12px 16px;box-shadow:var(--shadow-lg);max-width:340px;font-size:0.9rem;opacity:1;transition:opacity .4s ease}
     .toast.fade-out{opacity:0}
     .toast a{color:var(--blue);text-decoration:underline;margin-left:6px}
+    .anomaly-toast{pointer-events:auto;background:var(--card);color:var(--text);border:2px solid #e53935;border-radius:var(--radius-sm);padding:12px 16px;box-shadow:var(--shadow-lg);max-width:340px;font-size:0.9rem;opacity:1;transition:opacity .4s ease;animation:pulse-border 1.5s ease-in-out infinite}
+    .anomaly-toast.fade-out{opacity:0;animation:none}
+    @keyframes pulse-border{0%,100%{border-color:#e53935;box-shadow:0 0 0 0 rgba(229,57,53,0.4)}50%{border-color:#ff9800;box-shadow:0 0 8px 2px rgba(255,152,0,0.3)}}
     </style>
     <script>
     (function(){
@@ -197,11 +315,23 @@
             input.focus();msgs.scrollTop=msgs.scrollHeight;
         });
     }
+    function animatePipeline(){
+        var stages=document.querySelectorAll('.pipeline-stage');
+        stages.forEach(function(s,i){
+            setTimeout(function(){s.classList.add('stage-active')},i*200);
+            setTimeout(function(){s.classList.remove('stage-active');s.classList.add('stage-complete')},i*200+400);
+        });
+        setTimeout(function(){stages.forEach(function(s){s.classList.remove('stage-complete')})},4*200+400+3000);
+    }
     // SSE live updates
     if(typeof EventSource!=='undefined'){
         var es=new EventSource('/api/stream');
         es.onmessage=function(e){
             try{var d=JSON.parse(e.data)}catch(_){return}
+            if(d.type==='anomaly'){
+                showAnomalyToast(d);return;
+            }
+            animatePipeline();
             // Update total reports count
             var sp=document.querySelector('#stats-panel .stat-section p');
             if(sp)sp.textContent=parseInt(sp.textContent||'0',10)+1;
@@ -215,7 +345,561 @@
             tc.appendChild(t);
             setTimeout(function(){t.classList.add('fade-out');setTimeout(function(){t.remove()},400)},5000);
         };
+        function showAnomalyToast(d){
+            var tc=document.getElementById('toast-container');
+            var existing=tc.querySelectorAll('.anomaly-toast');
+            if(existing.length>=3){existing[0].remove();}
+            var t=document.createElement('div');t.className='anomaly-toast';t.setAttribute('role','alert');
+            t.textContent='\u26a0\ufe0f ANOMALY: '+d.neighborhood+' \u2014 '+d.z_score+'\u03c3 above baseline';
+            tc.appendChild(t);
+            setTimeout(function(){t.classList.add('fade-out');setTimeout(function(){t.remove()},400)},10000);
+        }
     }
+    </script>
+    <script>
+    (function(){
+        var COLORS=['#2196F3','#F44336','#4CAF50','#FF9800','#9C27B0','#00BCD4'];
+        var btn=document.getElementById('dispatch-btn');
+        var resultsDiv=document.getElementById('dispatch-results');
+        var dispatchGroup=null;
+        var iframeEl=document.querySelector('.map-wrap iframe');
+
+        function getLeaflet(){
+            if(!iframeEl||!iframeEl.contentWindow)return null;
+            var win=iframeEl.contentWindow;
+            if(!win.L)return null;
+            for(var k in win){try{if(win[k] instanceof win.L.Map)return{L:win.L,map:win[k]};}catch(e){}}
+            return null;
+        }
+
+        btn.addEventListener('click',function(){
+            var lf=getLeaflet();
+            if(!lf){showToast('Map is still loading, please wait');return;}
+            btn.disabled=true;btn.classList.add('loading');btn.setAttribute('aria-busy','true');
+            btn.textContent='Optimizing...';
+            if(dispatchGroup){lf.map.removeLayer(dispatchGroup);dispatchGroup=null;}
+            fetch('/api/dispatch/optimize?city={{ city }}&crews=3')
+            .then(function(r){if(!r.ok)throw new Error('API error '+r.status);return r.json();})
+            .then(function(data){
+                if(!data.total_issues){
+                    resultsDiv.innerHTML='<p style="color:var(--text-muted);font-size:0.9rem;margin-top:8px">No open issues to dispatch</p>';
+                    resultsDiv.style.display='block';return;
+                }
+                dispatchGroup=lf.L.layerGroup();
+                var bounds=[];
+                data.crews.forEach(function(crew,i){
+                    var color=COLORS[i%COLORS.length];
+                    var latlngs=crew.route.map(function(s){return[s.latitude,s.longitude];});
+                    if(latlngs.length){
+                        lf.L.polyline(latlngs,{color:color,weight:4,opacity:0.8}).addTo(dispatchGroup);
+                        crew.route.forEach(function(s){
+                            var el=document.createElement('span');
+                            el.textContent='Issue #'+s.issue_id+' | '+s.severity+' | Stop '+(s.order+1);
+                            lf.L.circleMarker([s.latitude,s.longitude],{radius:6,color:color,fillColor:color,fillOpacity:0.9})
+                            .bindPopup(el)
+                            .addTo(dispatchGroup);
+                        });
+                        bounds=bounds.concat(latlngs);
+                    }
+                });
+                dispatchGroup.addTo(lf.map);
+                if(bounds.length)lf.map.fitBounds(bounds,{padding:[30,30]});
+                var html='<p style="font-weight:600;font-size:0.95rem">'+data.total_distance_km.toFixed(2)+' km optimized route</p>';
+                html+='<p style="font-size:0.85rem;color:var(--text-muted)">'+data.num_crews+' crews dispatched</p>';
+                html+='<table class="dispatch-crew-table"><tr><th>Crew</th><th>Issues</th><th>Distance</th></tr>';
+                data.crews.forEach(function(crew,i){
+                    var color=COLORS[i%COLORS.length];
+                    html+='<tr><td><span class="crew-color-dot" style="background:'+color+'"></span>Crew '+(i+1)+'</td><td>'+crew.num_issues+'</td><td>'+crew.route_distance_km.toFixed(2)+' km</td></tr>';
+                });
+                html+='</table><button id="dispatch-clear" class="dispatch-clear-btn">✕ Clear Routes</button>';
+                resultsDiv.innerHTML=html;
+                resultsDiv.style.display='block';
+                document.getElementById('dispatch-clear').addEventListener('click',function(){
+                    if(dispatchGroup){lf.map.removeLayer(dispatchGroup);dispatchGroup=null;}
+                    resultsDiv.style.display='none';
+                });
+            })
+            .catch(function(err){showToast('Dispatch failed: '+err.message);})
+            .finally(function(){
+                btn.disabled=false;btn.classList.remove('loading');btn.setAttribute('aria-busy','false');
+                btn.textContent='\ud83d\ude9b Optimize Dispatch';
+            });
+        });
+
+        function showToast(msg){
+            var tc=document.getElementById('toast-container');
+            var t=document.createElement('div');t.className='toast';t.setAttribute('role','status');
+            t.textContent=msg;tc.appendChild(t);
+            setTimeout(function(){t.classList.add('fade-out');setTimeout(function(){t.remove()},400)},4000);
+        }
+    })();
+    </script>
+    <script>
+    (function(){
+        var DEPT_COLORS={roads:'#e53935',electrical:'#fdd835',sanitation:'#43a047',water:'#1e88e5',parks:'#8e24aa',general:'#757575'};
+        var btn=document.getElementById('budget-btn');
+        var resultsDiv=document.getElementById('budget-results');
+
+        btn.addEventListener('click',function(){
+            btn.disabled=true;btn.classList.add('loading');btn.setAttribute('aria-busy','true');
+            btn.textContent='Optimizing...';
+            fetch('/api/budget/optimize?city={{ city }}')
+            .then(function(r){if(!r.ok)throw new Error('API error '+r.status);return r.json();})
+            .then(function(data){
+                var total=data.total_budget;
+                var html='<p class="budget-header"><strong>$'+total.toLocaleString()+'</strong> budget · Impact score: <strong>'+((data.impact_score||0)*100).toFixed(1)+'%</strong></p>';
+                html+='<div class="budget-bar" role="img" aria-label="Budget allocation bar chart">';
+                var depts=Object.keys(data.allocations);
+                depts.forEach(function(d){
+                    var amt=data.allocations[d];
+                    var pct=(amt/total*100).toFixed(1);
+                    if(parseFloat(pct)>0){
+                        html+='<div class="budget-bar-segment" style="width:'+pct+'%;background:'+DEPT_COLORS[d]+'" title="'+d+': $'+Math.round(amt).toLocaleString()+' ('+pct+'%)" aria-label="'+d+' '+pct+'%"></div>';
+                    }
+                });
+                html+='</div><div class="budget-legend">';
+                depts.forEach(function(d){
+                    var amt=data.allocations[d];
+                    var pct=(amt/total*100).toFixed(1);
+                    html+='<div class="budget-legend-item"><span class="budget-dot" style="background:'+DEPT_COLORS[d]+'"></span><span class="budget-dept">'+d+'</span><span class="budget-amt">$'+Math.round(amt).toLocaleString()+' ('+pct+'%)</span></div>';
+                });
+                html+='</div>';
+                resultsDiv.innerHTML=html;
+                resultsDiv.style.display='block';
+            })
+            .catch(function(err){showToast('Budget optimization failed: '+err.message);})
+            .finally(function(){
+                btn.disabled=false;btn.classList.remove('loading');btn.setAttribute('aria-busy','false');
+                btn.textContent='\ud83d\udcb0 Optimize Budget';
+            });
+        });
+
+        function showToast(msg){
+            var tc=document.getElementById('toast-container');
+            var t=document.createElement('div');t.className='toast';t.setAttribute('role','status');
+            t.textContent=msg;tc.appendChild(t);
+            setTimeout(function(){t.classList.add('fade-out');setTimeout(function(){t.remove()},400)},4000);
+        }
+    })();
+    </script>
+    <script>
+    (function(){
+        var ICONS={air_quality:'\u{1F32B}\uFE0F',noise_db:'\uD83D\uDD0A',vibration_g:'\uD83D\uDCC8',water_flow_lps:'\uD83D\uDCA7'};
+        var PARAMS={air_quality:{baseline:12,sigma:2},noise_db:{baseline:45,sigma:3},vibration_g:{baseline:0.02,sigma:0.005},water_flow_lps:{baseline:2.5,sigma:0.3}};
+        function getStatus(type,reading){
+            var p=PARAMS[type];if(!p)return'green';
+            if(reading>p.baseline+2*p.sigma)return'red';
+            if(reading>p.baseline+p.sigma)return'yellow';
+            return'green';
+        }
+        function render(sensors){
+            var grid=document.getElementById('sensor-grid');
+            grid.innerHTML='';
+            sensors.forEach(function(s){
+                var card=document.createElement('div');card.className='sensor-card';
+                var icon=document.createElement('span');icon.className='sensor-icon';icon.textContent=ICONS[s.type]||'📡';
+                var name=document.createElement('span');name.className='sensor-name';name.textContent=s.neighborhood;
+                var dot=document.createElement('span');dot.className='sensor-dot '+getStatus(s.type,s.last_reading);
+                dot.setAttribute('title',s.type+': '+s.last_reading.toFixed(2));
+                card.appendChild(icon);card.appendChild(name);card.appendChild(dot);
+                grid.appendChild(card);
+            });
+        }
+        function fetchSensors(){
+            fetch('/api/sensors/status').then(function(r){return r.json()}).then(function(d){
+                if(d.sensors)render(d.sensors);
+            }).catch(function(){});
+        }
+        fetchSensors();
+        setInterval(fetchSensors,60000);
+    })();
+    </script>
+    <script>
+    (function(){
+        var btn=document.getElementById('diffusion-btn');
+        var clearBtn=document.getElementById('diffusion-clear');
+        var legend=document.getElementById('diffusion-legend');
+        var horizonSel=document.getElementById('diffusion-horizon');
+        var diffusionGroup=null;
+        var iframeEl=document.querySelector('.map-wrap iframe');
+
+        function getLeaflet(){
+            if(!iframeEl||!iframeEl.contentWindow)return null;
+            var win=iframeEl.contentWindow;
+            if(!win.L)return null;
+            for(var k in win){try{if(win[k] instanceof win.L.Map)return{L:win.L,map:win[k]};}catch(e){}}
+            return null;
+        }
+
+        function rateColor(rate,max){
+            var ratio=max>0?rate/max:0;
+            var hue=120*(1-ratio);
+            return'hsl('+hue+',80%,45%)';
+        }
+
+        btn.addEventListener('click',function(){
+            var lf=getLeaflet();
+            if(!lf){return;}
+            btn.disabled=true;btn.setAttribute('aria-busy','true');btn.textContent='Predicting...';
+            if(diffusionGroup){lf.map.removeLayer(diffusionGroup);diffusionGroup=null;}
+            var horizon=horizonSel.value;
+            fetch('/api/predict/diffusion?city={{ city }}&horizon='+horizon)
+            .then(function(r){if(!r.ok)throw new Error('API error '+r.status);return r.json();})
+            .then(function(data){
+                var neighborhoods=data.predictions||[];
+                if(!neighborhoods.length){legend.textContent='No predictions available';legend.hidden=false;return;}
+                var maxRate=Math.max.apply(null,neighborhoods.map(function(n){return n.predicted_rate;}));
+                diffusionGroup=lf.L.layerGroup();
+                neighborhoods.forEach(function(n){
+                    var radius=Math.min(1500,Math.max(50,n.predicted_rate*200));
+                    var circle=lf.L.circle([n.lat,n.lng],{radius:radius,color:rateColor(n.predicted_rate,maxRate),fillColor:rateColor(n.predicted_rate,maxRate),fillOpacity:0.4,weight:1});
+                    var popup=document.createElement('span');
+                    popup.textContent=n.neighborhood+': '+n.predicted_rate.toFixed(1)+' predicted issues';
+                    circle.bindPopup(popup);
+                    circle.addTo(diffusionGroup);
+                });
+                diffusionGroup.addTo(lf.map);
+                legend.innerHTML='<strong>Horizon:</strong> '+horizon+' days | <strong>Max:</strong> '+maxRate.toFixed(1)+' issues';
+                legend.hidden=false;
+                clearBtn.hidden=false;
+            })
+            .catch(function(err){legend.textContent='Prediction failed: '+err.message;legend.hidden=false;})
+            .finally(function(){
+                btn.disabled=false;btn.setAttribute('aria-busy','false');btn.textContent='\uD83D\uDD2E Predict Spread';
+            });
+        });
+
+        clearBtn.addEventListener('click',function(){
+            var lf=getLeaflet();
+            if(lf&&diffusionGroup){lf.map.removeLayer(diffusionGroup);diffusionGroup=null;}
+            legend.hidden=true;clearBtn.hidden=true;
+        });
+    })();
+    </script>
+    <script>
+    (function(){
+        var btn=document.getElementById('timelapse-btn');
+        var counter=document.getElementById('timelapse-day-counter');
+        var fill=document.getElementById('timelapse-fill');
+        var stats=document.getElementById('timelapse-stats');
+        var snapshots=null,idx=0,timer=null,playing=false;
+
+        function healthColor(s){return s>=70?'#2e7d32':s>=40?'#e65100':'#c62828';}
+
+        function render(){
+            var s=snapshots[idx];
+            counter.textContent='Day '+(idx+1)+' / '+snapshots.length;
+            fill.style.width=((idx+1)/snapshots.length*100)+'%';
+            document.getElementById('tl-date').textContent=s.date;
+            var h=document.getElementById('tl-health');
+            h.textContent=s.health_score.toFixed(1);h.style.color=healthColor(s.health_score);
+            document.getElementById('tl-reports').textContent=s.report_count;
+            document.getElementById('tl-new').textContent=s.new_reports_today;
+            stats.hidden=false;
+        }
+
+        function stop(){playing=false;clearInterval(timer);timer=null;btn.textContent='\u25B6 Play';}
+
+        function play(){
+            if(!snapshots){
+                btn.disabled=true;btn.textContent='Loading...';
+                fetch('/api/timelapse?city={{ city }}&days=30')
+                .then(function(r){return r.json()})
+                .then(function(d){snapshots=d;idx=0;render();startInterval();})
+                .catch(function(){stop();})
+                .finally(function(){btn.disabled=false;});
+                return;
+            }
+            if(idx>=snapshots.length-1){idx=0;}
+            startInterval();
+        }
+
+        function startInterval(){
+            playing=true;btn.textContent='\u23F8 Pause';
+            timer=setInterval(function(){
+                idx++;
+                if(idx>=snapshots.length){idx=snapshots.length-1;stop();return;}
+                render();
+            },500);
+        }
+
+        btn.addEventListener('click',function(){
+            if(playing){stop();}else{play();}
+        });
+    })();
+    </script>
+    <script>
+    (function(){
+        var FILL={A:'#4caf50',B:'#1e88e5',C:'#fdd835',D:'#ff9800',F:'#e53935'};
+        fetch('/api/transparency?city={{ city }}')
+        .then(function(r){if(!r.ok)throw new Error();return r.json();})
+        .then(function(d){
+            var sec=document.getElementById('transparency-section');
+            var c=document.getElementById('transparency-content');
+            var h='<div class="transparency-overall"><div class="score">'+d.overall_score.toFixed(1)+'</div>';
+            h+='<span class="transparency-grade grade-'+d.overall_grade+'" aria-label="Grade '+d.overall_grade+'">'+d.overall_grade+'</span>';
+            h+='<div class="max">/ 100</div></div>';
+            h+='<div class="transparency-dept-list">';
+            d.departments.forEach(function(dept){
+                h+='<div class="transparency-dept-row">';
+                h+='<span class="dept-name">'+dept.name+'</span>';
+                h+='<span class="transparency-grade grade-'+dept.grade+'" aria-label="Grade '+dept.grade+'">'+dept.grade+'</span>';
+                h+='<div class="transparency-bar" role="progressbar" aria-valuenow="'+dept.score.toFixed(1)+'" aria-valuemin="0" aria-valuemax="100" aria-label="'+dept.name+' score">';
+                h+='<div class="transparency-bar-fill" style="width:'+dept.score+'%;background:'+(FILL[dept.grade]||'#757575')+'"></div></div>';
+                h+='<span class="dept-score">'+dept.score.toFixed(1)+'</span></div>';
+            });
+            h+='</div>';
+            c.innerHTML=h;
+            sec.hidden=false;
+        })
+        .catch(function(){});
+    })();
+    </script>
+    <script>
+    (function(){
+        fetch('/api/sla/summary?city={{ city }}')
+        .then(function(r){if(!r.ok)throw new Error();return r.json();})
+        .then(function(d){
+            var sec=document.getElementById('sla-section');
+            var c=document.getElementById('sla-content');
+            var pct=d.compliance_rate*100;
+            var cls=pct>=80?'sla-green':pct>=60?'sla-amber':'sla-red';
+            var h='<div class="sla-compliance-score '+cls+'">';
+            h+='<div class="sla-compliance-label">SLA Compliance</div>';
+            h+='<div class="sla-compliance-value">'+pct.toFixed(1)+'%</div>';
+            h+='<div class="sla-compliance-subtitle">'+d.total_open+' open reports</div></div>';
+            if(d.total_open>0){
+                var otPct=(d.on_track/d.total_open*100).toFixed(0);
+                var arPct=(d.at_risk/d.total_open*100).toFixed(0);
+                var ovPct=(d.overdue/d.total_open*100).toFixed(0);
+                h+='<div class="sla-breakdown">';
+                h+='<div class="sla-breakdown-item"><span class="sla-breakdown-count">'+d.on_track+'</span><span class="sla-breakdown-label">✅ On Track ('+otPct+'%)</span></div>';
+                h+='<div class="sla-breakdown-item"><span class="sla-breakdown-count">'+d.at_risk+'</span><span class="sla-breakdown-label">⚠️ At Risk ('+arPct+'%)</span></div>';
+                h+='<div class="sla-breakdown-item"><span class="sla-breakdown-count">'+d.overdue+'</span><span class="sla-breakdown-label">❌ Overdue ('+ovPct+'%)</span></div>';
+                h+='</div>';
+                h+='<div class="sla-bar" role="img" aria-label="SLA distribution: '+d.on_track+' on track, '+d.at_risk+' at risk, '+d.overdue+' overdue">';
+                if(d.on_track)h+='<div class="sla-bar-segment" style="width:'+(d.on_track/d.total_open*100)+'%;background:#4caf50"></div>';
+                if(d.at_risk)h+='<div class="sla-bar-segment" style="width:'+(d.at_risk/d.total_open*100)+'%;background:#ff9800"></div>';
+                if(d.overdue)h+='<div class="sla-bar-segment" style="width:'+(d.overdue/d.total_open*100)+'%;background:#e53935"></div>';
+                h+='</div>';
+            }
+            c.innerHTML=h;
+            sec.hidden=false;
+        })
+        .catch(function(){});
+    })();
+    </script>
+    <script>
+    (function(){
+        var btn=document.getElementById('workorder-btn');
+        var input=document.getElementById('workorder-report-id');
+        var resultsDiv=document.getElementById('workorder-results');
+        function esc(s){return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');}
+
+        btn.addEventListener('click',function(){
+            var id=input.value.trim();
+            if(!id){resultsDiv.innerHTML='<div class="workorder-error" role="alert">Please enter a report ID</div>';return;}
+            btn.disabled=true;btn.setAttribute('aria-busy','true');btn.textContent='Generating...';
+            resultsDiv.innerHTML='';
+            fetch('/api/reports/'+encodeURIComponent(id)+'/workorder')
+            .then(function(r){
+                if(!r.ok){
+                    if(r.status===404)throw new Error('Report not found');
+                    if(r.status===422)throw new Error('Cannot generate work order: cycle in dependencies');
+                    throw new Error('Failed to generate work order');
+                }
+                return r.json();
+            })
+            .then(function(data){
+                var levels={};
+                data.steps.forEach(function(s){
+                    if(!levels[s.order])levels[s.order]=[];
+                    levels[s.order].push(s);
+                });
+                var orders=Object.keys(levels).sort(function(a,b){return a-b;});
+                var cp=data.critical_path||[];
+                var html='<div class="workorder-flow" role="img" aria-label="Work order step flow diagram">';
+                orders.forEach(function(ord,i){
+                    if(i>0)html+='<span class="workorder-arrow">\u2192</span>';
+                    html+='<div class="workorder-level">';
+                    levels[ord].sort(function(a,b){return a.department.localeCompare(b.department);}).forEach(function(step){
+                        var isCritical=cp.indexOf(step.department)!==-1;
+                        html+='<div class="workorder-step'+(isCritical?' workorder-step--critical':'')+'">';
+                        html+='<span class="workorder-step-dept">'+esc(step.department)+'</span>';
+                        html+='<span class="workorder-step-hours">'+esc(step.estimated_hours)+'h</span></div>';
+                    });
+                    html+='</div>';
+                });
+                html+='</div>';
+                html+='<div class="workorder-summary"><span>Total: '+esc(data.total_estimated_hours)+'h</span><span>Critical path: '+esc(data.critical_path_hours)+'h</span></div>';
+                resultsDiv.innerHTML=html;
+            })
+            .catch(function(err){resultsDiv.innerHTML='<div class="workorder-error" role="alert">'+esc(err.message)+'</div>';})
+            .finally(function(){
+                btn.disabled=false;btn.setAttribute('aria-busy','false');btn.textContent='\uD83D\uDCCB Generate Work Order';
+            });
+        });
+    })();
+    </script>
+    <script>
+    (function(){
+        var btn=document.getElementById('causality-btn');
+        var resultsDiv=document.getElementById('causality-results');
+        function esc(s){return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');}
+        btn.addEventListener('click',function(){
+            btn.disabled=true;btn.setAttribute('aria-busy','true');btn.textContent='Loading...';
+            resultsDiv.innerHTML='';
+            fetch('/api/causality?city={{ city }}')
+            .then(function(r){if(!r.ok)throw new Error('API error '+r.status);return r.json();})
+            .then(function(data){
+                var links=data.links||[];
+                if(!links.length){resultsDiv.innerHTML='<p class="causality-empty">No causal links detected</p>';return;}
+                var html='<ul class="causality-list">';
+                links.forEach(function(l){
+                    var cls=l.correlation>0.7?'causality-strong':'causality-moderate';
+                    html+='<li class="causality-link '+cls+'">';
+                    html+='<span class="causality-source">'+esc(l.source)+'</span>';
+                    html+='<span class="causality-arrow">\u2192</span>';
+                    html+='<span class="causality-target">'+esc(l.target)+'</span>';
+                    html+='<span class="causality-meta">(lag: '+l.lag_days+' days, r='+l.correlation.toFixed(2)+')</span>';
+                    html+='</li>';
+                });
+                html+='</ul>';
+                if(data.note)html+='<p class="causality-note">'+esc(data.note)+'</p>';
+                resultsDiv.innerHTML=html;
+            })
+            .catch(function(err){resultsDiv.innerHTML='<p class="causality-empty">Failed to load causality data</p>';})
+            .finally(function(){
+                btn.disabled=false;btn.setAttribute('aria-busy','false');btn.textContent='\uD83D\uDD17 Show Causality';
+            });
+        });
+    })();
+    </script>
+    <script>
+    (function(){
+        var CAT_ICONS={pothole:'\uD83D\uDD73\uFE0F',streetlight:'\uD83D\uDCA1',graffiti:'\uD83C\uDFA8',flooding:'\uD83C\uDF0A',dumping:'\uD83D\uDDD1\uFE0F',sign:'\uD83E\uDEA7',other:'\uD83D\uDCCB',unclassified:'\u2753'};
+        var btn=document.getElementById('priority-refresh-btn');
+        var list=document.getElementById('priority-list');
+        function esc(s){return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;');}
+        function fetchPriority(){
+            btn.setAttribute('aria-busy','true');
+            fetch('/api/reports/priority?city={{ city }}')
+            .then(function(r){if(!r.ok)throw new Error('API error');return r.json();})
+            .then(function(data){
+                var reports=(data.reports||[]).slice(0,10);
+                if(!reports.length){list.innerHTML='<p class="priority-empty">No open reports</p>';return;}
+                var html='';
+                reports.forEach(function(r,i){
+                    var cls=r.score>=67?'priority-high':r.score>=34?'priority-medium':'priority-low';
+                    var icon=CAT_ICONS[r.category]||CAT_ICONS.other;
+                    html+='<div class="priority-row"><div class="priority-row-main">';
+                    html+='<span class="priority-rank">'+(i+1)+'</span>';
+                    html+='<div class="priority-score-bar '+cls+'" role="progressbar" aria-valuenow="'+r.score.toFixed(1)+'" aria-valuemin="0" aria-valuemax="100" aria-label="Priority score '+r.score.toFixed(1)+'">';
+                    html+='<div class="priority-score-fill" style="width:'+r.score.toFixed(1)+'%"></div>';
+                    html+='<span class="priority-score-label">'+r.score.toFixed(1)+'</span></div>';
+                    html+='<span class="priority-severity-badge sev-'+esc(r.severity)+'">'+esc(r.severity)+'</span>';
+                    html+='</div><div class="priority-row-detail">';
+                    html+='<span class="priority-category-icon" title="'+esc(r.category)+'">'+icon+'</span>';
+                    html+='<span class="priority-neighborhood">'+esc(r.neighborhood)+'</span>';
+                    html+='</div></div>';
+                });
+                list.innerHTML=html;
+            })
+            .catch(function(){list.innerHTML='<p class="priority-empty">Failed to load priority data</p>';})
+            .finally(function(){btn.setAttribute('aria-busy','false');});
+        }
+        btn.addEventListener('click',fetchPriority);
+        fetchPriority();
+    })();
+    </script>
+    <script>
+    (function(){
+        function formatUptime(s){var d=Math.floor(s/86400),h=Math.floor((s%86400)/3600),m=Math.floor((s%3600)/60);return d+'d '+h+'h '+m+'m';}
+        function fetchMetrics(){
+            Promise.all([fetch('/metrics'),fetch('/health')])
+            .then(function(rs){if(!rs[0].ok||!rs[1].ok)throw new Error();return Promise.all([rs[0].json(),rs[1].json()]);})
+            .then(function(data){
+                var m=data[0],h=data[1];
+                document.getElementById('mv-requests').textContent=m.request_count.toLocaleString();
+                var errPct=m.error_rate*100;
+                var errEl=document.getElementById('mv-error');
+                errEl.textContent=errPct.toFixed(1)+'%';
+                errEl.className='metric-value'+(errPct<5?' metric-error-green':errPct<=10?' metric-error-yellow':' metric-error-red');
+                var maxP95=0;var ep=m.endpoints||{};for(var k in ep){if(ep[k].p95>maxP95)maxP95=ep[k].p95;}
+                document.getElementById('mv-latency').textContent=Math.round(maxP95)+' ms';
+                document.getElementById('mv-uptime').textContent=formatUptime(h.uptime_seconds);
+                document.getElementById('metrics-updated').textContent=h.timestamp?new Date(h.timestamp).toLocaleTimeString():'';
+            })
+            .catch(function(){
+                ['mv-requests','mv-error','mv-latency','mv-uptime'].forEach(function(id){var el=document.getElementById(id);el.textContent='\u2014';el.className='metric-value';});
+                document.getElementById('metrics-updated').textContent='';
+            });
+        }
+        fetchMetrics();
+        setInterval(fetchMetrics,30000);
+    })();
+    </script>
+    <script>
+    (function(){
+        function scoreColor(s){
+            if(s<40)return'#e74c3c';
+            if(s<70)return'#f39c12';
+            return'#27ae60';
+        }
+        function fetchIntelligenceScore(){
+            fetch('/api/intelligence-score?city={{ city }}')
+            .then(function(r){return r.json();})
+            .then(function(d){
+                var el=document.getElementById('intel-score');
+                el.textContent=d.score;
+                el.style.color=scoreColor(d.score);
+                document.getElementById('intel-health').textContent=d.components.health.score;
+                document.getElementById('intel-sla').textContent=d.components.sla_compliance.score;
+                document.getElementById('intel-transparency').textContent=d.components.transparency.score;
+                document.getElementById('intel-anomaly').textContent=d.components.anomaly_free.score;
+            })
+            .catch(function(){
+                document.getElementById('intel-score').textContent='\u2014';
+                document.getElementById('intel-health').textContent='\u2014';
+                document.getElementById('intel-sla').textContent='\u2014';
+                document.getElementById('intel-transparency').textContent='\u2014';
+                document.getElementById('intel-anomaly').textContent='\u2014';
+            });
+        }
+        fetchIntelligenceScore();
+        setInterval(fetchIntelligenceScore,60000);
+    })();
+    </script>
+    <script>
+    (function(){
+        var sel=document.getElementById("health-trend-neighborhood");
+        var chart=document.querySelector(".health-trend-chart");
+        function render(history){
+            chart.innerHTML="";
+            history.forEach(function(d){
+                var bar=document.createElement("div");
+                bar.className="health-trend-bar "+(d.health_score>=70?"health-bar-green":d.health_score>=40?"health-bar-yellow":"health-bar-red");
+                bar.style.height=d.health_score+"%";
+                bar.title=d.date+": "+d.health_score.toFixed(1);
+                chart.appendChild(bar);
+            });
+        }
+        function load(neighborhood){
+            var url="/api/health/history?city={{ city }}&days=14";
+            if(neighborhood)url+="&neighborhood="+encodeURIComponent(neighborhood);
+            fetch(url).then(function(r){return r.json()}).then(function(data){
+                var ns=data.neighborhoods||[];
+                if(!sel.options.length){
+                    ns.sort(function(a,b){return a.name.localeCompare(b.name)});
+                    ns.forEach(function(n){var o=document.createElement("option");o.value=n.name;o.textContent=n.name;sel.appendChild(o)});
+                }
+                if(ns.length)render(ns[0].history);
+                else chart.textContent="\u2014";
+            }).catch(function(){chart.textContent="\u2014"});
+        }
+        sel.addEventListener("change",function(){load(sel.value)});
+        load();
+    })();
     </script>
 </body>
 </html>
